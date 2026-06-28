@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROLE_NAMES = ['explorer', 'librarian', 'oracle', 'designer', 'fixer', 'reviewer'];
+const ROLE_NAMES = ['explorer', 'librarian', 'oracle', 'designer', 'fixer'];
 
 class UsageError extends Error {
   constructor(message) {
@@ -338,7 +338,7 @@ function printInstallPlan(plan, dryRun) {
   }
 
   console.log(`${dryRun ? 'Would create' : 'Will create'} backup under: ${path.join(plan.codexHome, 'omc-slim-backups', '<timestamp>')}`);
-  console.log(`Agents: ${plan.agentsMatch ? 'unchanged' : 'replace top-level *.toml with explorer, librarian, oracle, designer, fixer, reviewer'}`);
+  console.log(`Agents: ${plan.agentsMatch ? 'unchanged' : 'replace top-level *.toml with explorer, librarian, oracle, designer, fixer'}`);
   if (!plan.agentsMatch && plan.existingTomls.length > 0) {
     console.log(`  Existing top-level TOML files to remove: ${plan.existingTomls.join(', ')}`);
   }

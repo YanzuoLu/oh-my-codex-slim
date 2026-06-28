@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), '..');
 
-const roles = ['explorer', 'librarian', 'oracle', 'designer', 'fixer', 'reviewer'];
+const roles = ['explorer', 'librarian', 'oracle', 'designer', 'fixer'];
 const hookCli = 'plugins/oh-my-codex-slim/components/orchestrator-hook/cli.cjs';
 const jsonFiles = [
   'package.json',
@@ -106,18 +106,23 @@ async function validatePromptSemantics() {
   const skill = await readText(skillPath);
 
   assert(directive.length > 4500, 'Directive must be a substantive OMO-slim/Codex orchestration contract.');
+  // Markers follow omo-slim's actual orchestrator structure (Role/Agents/Workflow/Communication),
+  // adapted for Codex. No invented section names (Intent Gate / Context-Completion Gate / Ask Gate).
   for (const marker of [
     'OMC_SLIM_DIRECTIVE_V1',
-    'Intent Gate',
-    'Auto-Continue',
-    'Context-Completion Gate',
-    'Ask Gate',
+    'OMC Slim Orchestrator Context',
+    'Understand',
     'Path Selection',
-    'Delegation',
-    'Parallel',
-    'Validation',
+    'Delegation Check',
+    'Plan and Parallelize',
+    'Validation routing',
+    'Verify',
     'Manual QA Gate',
     'Design Handoff',
+    'Clarity Over Assumptions',
+    'Concise Execution',
+    'No Flattery',
+    'Honest Pushback',
     'spawn_agent',
     'list_agents',
     'wait_agent',
@@ -127,8 +132,7 @@ async function validatePromptSemantics() {
     'task_name',
     'agent_type',
     'lowercase letters, digits, and underscores only',
-    'Never simulate native live-agent activity',
-    'UNCONDITIONAL APPROVAL'
+    'Never simulate native live-agent activity'
   ]) {
     requireText(directive, marker, directivePath);
   }
@@ -158,8 +162,7 @@ async function validatePromptSemantics() {
     'Never simulate native live-agent activity',
     'Manual QA Gate',
     'Design Handoff',
-    'should I continue',
-    'UNCONDITIONAL APPROVAL'
+    'should I continue'
   ]) {
     requireText(skill, marker, skillPath);
   }
@@ -168,40 +171,54 @@ async function validatePromptSemantics() {
   const pluginJsonText = await readText('plugins/oh-my-codex-slim/.codex-plugin/plugin.json');
   const rootMarketplaceText = await readText('marketplace.json');
   const codexMarketplaceText = await readText('.agents/plugins/marketplace.json');
-  requireText(readme, 'five OMO-style lanes plus a strict Codex ultrawork reviewer mapping', 'README.md');
+  requireText(readme, 'five OMO-style specialist lanes', 'README.md');
   requireText(readme, 'Runtime multi-agent behavior depends on the Codex host exposing native agent tools', 'README.md');
   requireText(readme, 'collab_agent_spawn_begin', 'README.md');
   requireText(readme, 'A final assistant message that says an agent was spawned is not enough.', 'README.md');
-  requireText(pluginJsonText, 'five OMO-style lanes plus a strict Codex ultrawork reviewer mapping', 'plugins/oh-my-codex-slim/.codex-plugin/plugin.json');
-  requireText(rootMarketplaceText, 'five OMO-style lanes', 'marketplace.json');
-  requireText(rootMarketplaceText, 'strict reviewer mapping', 'marketplace.json');
-  requireText(codexMarketplaceText, 'five OMO-style lanes', '.agents/plugins/marketplace.json');
-  requireText(codexMarketplaceText, 'strict reviewer mapping', '.agents/plugins/marketplace.json');
+  requireText(pluginJsonText, 'five OMO-style specialist lanes', 'plugins/oh-my-codex-slim/.codex-plugin/plugin.json');
+  requireText(rootMarketplaceText, 'five OMO-style specialist lanes', 'marketplace.json');
+  requireText(codexMarketplaceText, 'five OMO-style specialist lanes', '.agents/plugins/marketplace.json');
+  // omo-slim has no reviewer agent (review = oracle). Guard against re-introducing a reviewer ROLE
+  // (agent_type/role enumerations or agent files), while allowing prose like "no reviewer agent".
+  assert(!/`reviewer`/.test(directive), 'directive must not list a `reviewer` role.');
+  assert(!/`reviewer`/.test(skill), 'skill must not list a `reviewer` role.');
 }
 
-function runHook(input, env = {}) {
-  return runNode([hookCli, 'hook', 'user-prompt-submit'], { input, env: { OMC_SLIM_DISABLE: '', ...env } });
+function runHook(subcommand, input, env = {}) {
+  return runNode([hookCli, 'hook', subcommand], { input, env: { OMC_SLIM_DISABLE: '', ...env } });
 }
 
 async function validateHook() {
-  const positive = runHook(JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'Implement this.' }));
-  assert(positive.stderr === '', 'Positive hook test should not write stderr.');
-  assert(positive.stdout.endsWith('\n'), 'Positive hook output must end with one newline.');
-  const parsed = JSON.parse(positive.stdout);
+  // SessionStart: full directive injected once per session.
+  const ss = runHook('session-start', JSON.stringify({ hook_event_name: 'SessionStart' }));
+  assert(ss.stderr === '', 'SessionStart hook should not write stderr.');
+  assert(ss.stdout.endsWith('\n'), 'SessionStart hook output must end with one newline.');
+  const ssParsed = JSON.parse(ss.stdout);
+  assert(ss.stdout === `${JSON.stringify(ssParsed)}\n`, 'SessionStart output must be exactly one JSON object plus newline.');
+  assert(ssParsed.hookSpecificOutput?.hookEventName === 'SessionStart', 'SessionStart output must target SessionStart.');
   assert(
-    positive.stdout === `${JSON.stringify(parsed)}\n`,
-    'Positive hook output must be exactly one JSON object plus newline.'
-  );
-  assert(
-    parsed.hookSpecificOutput?.hookEventName === 'UserPromptSubmit',
-    'Hook output must target UserPromptSubmit.'
-  );
-  assert(
-    typeof parsed.hookSpecificOutput?.additionalContext === 'string' &&
-      parsed.hookSpecificOutput.additionalContext.includes('OMC_SLIM_DIRECTIVE_V1'),
-    'Hook output must include directive marker context.'
+    typeof ssParsed.hookSpecificOutput?.additionalContext === 'string' &&
+      ssParsed.hookSpecificOutput.additionalContext.includes('OMC_SLIM_DIRECTIVE_V1'),
+    'SessionStart must inject the full directive (OMC_SLIM_DIRECTIVE_V1).'
   );
 
+  // UserPromptSubmit: short per-turn anchor only, NOT a re-stamp of the full directive.
+  const ups = runHook('user-prompt-submit', JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'Implement this.' }));
+  assert(ups.stderr === '', 'UserPromptSubmit hook should not write stderr.');
+  const upsParsed = JSON.parse(ups.stdout);
+  assert(ups.stdout === `${JSON.stringify(upsParsed)}\n`, 'UserPromptSubmit output must be exactly one JSON object plus newline.');
+  assert(upsParsed.hookSpecificOutput?.hookEventName === 'UserPromptSubmit', 'UserPromptSubmit output must target UserPromptSubmit.');
+  assert(
+    typeof upsParsed.hookSpecificOutput?.additionalContext === 'string' &&
+      upsParsed.hookSpecificOutput.additionalContext.includes('OMC_SLIM_ANCHOR_V1'),
+    'UserPromptSubmit must inject the short anchor (OMC_SLIM_ANCHOR_V1).'
+  );
+  assert(
+    !upsParsed.hookSpecificOutput.additionalContext.includes('OMC_SLIM_DIRECTIVE_V1'),
+    'Per-turn anchor must NOT re-stamp the full directive every turn.'
+  );
+
+  // Hook CLI must run from a plugin-cache-like directory without a package.json.
   const pluginCacheLikeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'omc-slim-hook-cache-'));
   try {
     const cacheCli = path.join(pluginCacheLikeDir, 'cli.cjs');
@@ -210,11 +227,11 @@ async function validateHook() {
       path.join(repoRoot, 'plugins/oh-my-codex-slim/components/orchestrator-hook/directive.md'),
       path.join(pluginCacheLikeDir, 'directive.md')
     );
-    const cachePositive = runNode([cacheCli, 'hook', 'user-prompt-submit'], {
-      input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'Implement this.' }),
+    const cacheSs = runNode([cacheCli, 'hook', 'session-start'], {
+      input: JSON.stringify({ hook_event_name: 'SessionStart' }),
       env: { OMC_SLIM_DISABLE: '' }
     });
-    const cacheParsed = JSON.parse(cachePositive.stdout);
+    const cacheParsed = JSON.parse(cacheSs.stdout);
     assert(
       cacheParsed.hookSpecificOutput?.additionalContext?.includes('OMC_SLIM_DIRECTIVE_V1'),
       'Hook CLI must run from a plugin-cache-like directory without package.json.'
@@ -223,19 +240,25 @@ async function validateHook() {
     await fs.rm(pluginCacheLikeDir, { recursive: true, force: true });
   }
 
-  for (const value of ['1', 'true', 'yes']) {
-    const disabled = runHook(JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'Implement this.' }), {
-      OMC_SLIM_DISABLE: value
-    });
-    assert(disabled.stdout === '', `OMC_SLIM_DISABLE=${value} should produce empty stdout.`);
+  // OMC_SLIM_DISABLE (incl. "on") disables both events.
+  for (const value of ['1', 'true', 'yes', 'on']) {
+    assert(
+      runHook('session-start', JSON.stringify({ hook_event_name: 'SessionStart' }), { OMC_SLIM_DISABLE: value }).stdout === '',
+      `OMC_SLIM_DISABLE=${value} should disable SessionStart.`
+    );
+    assert(
+      runHook('user-prompt-submit', JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'Implement this.' }), { OMC_SLIM_DISABLE: value }).stdout === '',
+      `OMC_SLIM_DISABLE=${value} should disable UserPromptSubmit.`
+    );
   }
 
+  // Prompt-prefix opt-outs suppress the per-turn anchor.
   for (const prefix of ['[no-omc]', '[omc-off]']) {
-    const optedOut = runHook(JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: `  ${prefix} skip` }));
+    const optedOut = runHook('user-prompt-submit', JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: `  ${prefix} skip` }));
     assert(optedOut.stdout === '', `${prefix} prompt should produce empty stdout.`);
   }
 
-  const invalidJson = runHook('{not json');
+  const invalidJson = runHook('user-prompt-submit', '{not json');
   assert(invalidJson.stdout === '', 'Invalid JSON hook input should produce empty stdout.');
 }
 
@@ -332,7 +355,7 @@ async function validateInstaller() {
     const expectedTomls = roles.map((role) => `${role}.toml`).sort();
     assert(
       JSON.stringify(await topLevelTomls(agentsDir)) === JSON.stringify(expectedTomls),
-      'Install must leave exactly the six OMC top-level agent TOMLs.'
+      'Install must leave exactly the five OMC top-level agent TOMLs.'
     );
     assert(await pathExists(path.join(agentsDir, 'notes.txt')), 'Non-TOML files under agents/ must be preserved.');
     assert(!(await pathExists(path.join(agentsDir, 'legacy.toml'))), 'Legacy top-level TOML must be removed.');
@@ -415,7 +438,7 @@ async function validateEmptyInstallRollback() {
     assert(await pathExists(configPath), 'Empty home setup must create config.toml.');
     assert(
       JSON.stringify(await topLevelTomls(agentsDir)) === JSON.stringify(roles.map((role) => `${role}.toml`).sort()),
-      'Setup alias must install exactly the six OMC role TOMLs.'
+      'Setup alias must install exactly the five OMC role TOMLs.'
     );
 
     runNode(['scripts/install.mjs', 'rollback', '--codex-home', tempCodexHome]);
@@ -471,31 +494,24 @@ async function validateAgents() {
   const bannedField = /^(model|model_reasoning_effort|service_tier)\s*=/m;
   const requiredFields = ['name', 'description', 'nickname_candidates', 'developer_instructions'];
   const expectedTomls = roles.map((role) => `${role}.toml`).sort();
+  // Markers reflect omo-slim's ACTUAL agent prompt content (faithful port), not invented structure.
   const roleMarkers = {
-    explorer: ['<analysis>', '<results>', 'absolute', 'READ-ONLY'],
-    librarian: ['SHA-pinned', 'TYPE A', 'TYPE B', 'Open questions'],
-    oracle: ['Simplicity bias', 'Effort', 'Confidence', 'One clear path'],
-    designer: ['design system', 'Design Handoff', 'AI-slop', 'desktop and mobile'],
-    fixer: [
-      'Manual QA Gate',
-      'Three-attempt',
-      'Forbidden stops',
-      'root cause',
-      'Return a precise blocker requesting Oracle review',
-      'host explicitly exposes Oracle delegation'
-    ],
-    reviewer: ['UNCONDITIONAL APPROVAL', 'REJECTION', 'Review only', 'codex-ultrawork-reviewer']
+    explorer: ['fast codebase navigation specialist', '<results>', '<answer>', 'READ-ONLY'],
+    librarian: ['research specialist', 'official documentation', 'READ-ONLY'],
+    oracle: ['strategic technical advisor and code reviewer', 'YAGNI', 'READ-ONLY'],
+    designer: ['frontend UI/UX specialist', 'Design Principles', 'Match Vision to Execution'],
+    fixer: ['fast, focused implementation specialist', '<summary>', '<changes>', 'NO delegation']
   };
 
   assert(
     JSON.stringify(await topLevelTomls(agentsDir)) === JSON.stringify(expectedTomls),
-    'Bundled source agent top-level TOMLs must be exactly the six OMC roles.'
+    'Bundled source agent top-level TOMLs must be exactly the five OMC roles.'
   );
 
   for (const role of roles) {
     const file = path.join(agentsDir, `${role}.toml`);
     const text = await fs.readFile(file, 'utf8');
-    assert(text.length > 1800, `${role}.toml prompt must be substantially non-trivial.`);
+    assert(text.length > 500, `${role}.toml prompt must be substantially non-trivial.`);
     assert(!bannedField.test(text), `${role}.toml must not set model/reasoning/service tier fields.`);
     for (const field of requiredFields) {
       assert(new RegExp(`^${field}\\s*=`, 'm').test(text), `${role}.toml missing ${field}.`);

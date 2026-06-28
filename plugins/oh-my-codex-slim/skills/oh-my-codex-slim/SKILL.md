@@ -29,13 +29,14 @@ After a step passes verification, continue to the next unblocked step without as
 - `oracle`: read-only strategic consultation for architecture, security, performance, risky plans, or hard debugging.
 - `designer`: UI, UX, frontend, visual systems, design tokens, copy, acceptance criteria, and design handoff.
 - `fixer`: bounded implementation after requirements are clear and writes are allowed.
-- `reviewer`: strict final verification; returns `UNCONDITIONAL APPROVAL` only with complete criteria and QA evidence, otherwise `REJECTION`.
+
+Code review and QA are the `oracle` lane; there is no separate reviewer agent (this matches omo-slim).
 
 ## Codex Native Agent Tools
 
 When the host exposes Codex live-agent tools, use them. Prefer `spawn_agent` for new specialist work, `list_agents` to avoid duplicate live jobs, `wait_agent` to collect results, `followup_task` for same-`task_name` failures or refinements, `send_message` for live clarifications, and `interrupt_agent` only for obsolete disposable work. If these tools are absent, continue directly with available tools instead of pretending they exist.
 
-Every delegation prompt should include **TASK**, **EXPECTED OUTCOME**, **REQUIRED TOOLS**, **MUST DO**, **MUST NOT DO**, and **CONTEXT**. Use Codex-compatible `task_name` values with lowercase letters, digits, and underscores only. When local OMC roles are installed and `spawn_agent` exposes `agent_type`, pass `agent_type` explicitly, for example `explorer`, `librarian`, `oracle`, `designer`, `fixer`, or `reviewer`. Reuse existing `task_name`/canonical agent references for follow-ups. Do not start fresh when a live task already has the needed context.
+Every delegation prompt should include **TASK**, **EXPECTED OUTCOME**, **REQUIRED TOOLS**, **MUST DO**, **MUST NOT DO**, and **CONTEXT**. Use Codex-compatible `task_name` values with lowercase letters, digits, and underscores only. When local OMC roles are installed and `spawn_agent` exposes `agent_type`, pass `agent_type` explicitly, for example `explorer`, `librarian`, `oracle`, `designer`, or `fixer`. Reuse existing `task_name`/canonical agent references for follow-ups. Do not start fresh when a live task already has the needed context.
 
 Never simulate native live-agent activity. Do not say an agent was spawned, waited on, or reused unless a host tool call actually succeeded or a host-visible child-agent message/event proves it. If live-agent tools are unavailable, state the fallback and continue directly.
 

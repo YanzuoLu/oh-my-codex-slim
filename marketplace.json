@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "oh-my-codex-slim",
-      "description": "Ports OMO-slim orchestration to Codex with a hook, skill, five OMO-style lanes, and a strict reviewer mapping.",
+      "description": "Ports OMO-slim orchestration to Codex with a hook, skill, and five OMO-style specialist lanes (explorer, librarian, oracle, designer, fixer).",
       "source": "./plugins/oh-my-codex-slim",
       "category": "Developer Tools",
       "policy": {

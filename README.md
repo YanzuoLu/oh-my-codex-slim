@@ -1,6 +1,8 @@
 # Oh My Codex Slim
 
-Oh My Codex Slim is a Codex-oriented OMO-slim orchestration port. The marketplace plugin installs the prompt hook and workflow skill. The setup step is required to replace Codex native subagents with five OMO-style lanes plus a strict Codex ultrawork reviewer mapping: explorer, librarian, oracle, designer, fixer, and reviewer.
+Oh My Codex Slim is a Codex-oriented OMO-slim orchestration port. The marketplace plugin installs the prompt hook and workflow skill. The setup step is required to replace Codex native subagents with five OMO-style specialist lanes: explorer, librarian, oracle, designer, and fixer. As in omo-slim, code review is the oracle lane; there is no separate reviewer agent.
+
+> Versions `< 0.2.0` were not faithfully aligned with omo-slim (they re-stamped the full directive every turn and shipped an invented `reviewer` agent). Re-run the setup command to migrate; it backs up your config and removes the `reviewer` agent.
 
 ## Prerequisites
 
@@ -14,7 +16,7 @@ Oh My Codex Slim is a Codex-oriented OMO-slim orchestration port. The marketplac
 ```sh
 codex plugin marketplace add YanzuoLu/oh-my-codex-slim
 codex plugin add oh-my-codex-slim@oh-my-codex-slim
-bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.1.2 oh-my-codex-slim install
+bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.2.0 oh-my-codex-slim install
 ```
 
 The third step is required because Codex marketplace plugins do not currently auto-register, disable, or replace native `[agents.*]` configuration. `oh-my-codex-slim install` creates a timestamped backup, removes existing top-level native agent TOMLs, writes the six managed role TOMLs, and rewrites `[agents.*]` config entries to point only at those roles.
@@ -42,7 +44,7 @@ The Codex marketplace manifest used by current Codex CLI lives at `.agents/plugi
 
 Setup writes only inside `$CODEX_HOME`:
 
-- `$CODEX_HOME/agents/{explorer,librarian,oracle,designer,fixer,reviewer}.toml`
+- `$CODEX_HOME/agents/{explorer,librarian,oracle,designer,fixer}.toml`
 - `$CODEX_HOME/config.toml` sections like `[agents.explorer] config_file = "./agents/explorer.toml"`
 - backups under `$CODEX_HOME/omc-slim-backups/<timestamp>/`
 
@@ -64,13 +66,13 @@ bun scripts/install.mjs install --codex-home /path/to/.codex
 Roll back to the latest backup:
 
 ```sh
-bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.1.2 oh-my-codex-slim rollback
+bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.2.0 oh-my-codex-slim rollback
 ```
 
 Roll back to a specific backup:
 
 ```sh
-bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.1.2 oh-my-codex-slim rollback --backup /path/to/.codex/omc-slim-backups/<timestamp>
+bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.2.0 oh-my-codex-slim rollback --backup /path/to/.codex/omc-slim-backups/<timestamp>
 ```
 
 From a local checkout, `bun scripts/install.mjs rollback` and `node scripts/install.mjs rollback` are equivalent.
@@ -79,37 +81,51 @@ From a local checkout, `bun scripts/install.mjs rollback` and `node scripts/inst
 
 ## What it does
 
-- Adds a `UserPromptSubmit` hook that injects OMC orchestrator guidance as additional context.
+- Injects the full orchestrator directive once per session via a `SessionStart` hook (it persists across turns), mirroring how omo-slim keeps the orchestrator prompt present without re-stamping it every turn.
+- Adds a short per-turn role anchor via a `UserPromptSubmit` hook, equivalent to omo-slim's lightweight per-turn reminder.
 - Ships a Codex skill describing the OMO-slim/Codex workflow.
-- Replaces native Codex subagent TOML/config entries with five OMO-style lanes plus a strict Codex ultrawork reviewer mapping during setup.
+- Replaces native Codex subagent TOML/config entries with five OMO-style specialist lanes during setup (explorer, librarian, oracle, designer, fixer). Code review/QA is the oracle lane.
 - Uses Codex native live-agent tools when the host exposes them; does not assume unavailable tools exist.
 - Keeps Codex system, developer, approval, sandbox, tool, and active mode instructions authoritative.
 
+## Faithfulness and Codex platform limitations
+
+This is a faithful port of omo-slim's orchestration behavior, constrained by the Codex plugin surface. The following omo-slim mechanisms are intentionally not replicated:
+
+- **No plugin system channel.** omo-slim injects the orchestrator prompt into the OpenCode system channel. Codex command hooks can only emit a model-visible `developer` message, so the directive is delivered at `SessionStart`. It persists across normal turns but may be dropped by auto-compaction; the short per-turn anchor re-asserts the role so behavior degrades gracefully.
+- **No Background Job Board / live task state.** Codex command hooks cannot observe task call IDs, child sessions, or terminal reconciliation, so omo-slim's job board and `task_id` session-reuse are omitted rather than simulated.
+- **No MCP** (context7, grep.app, websearch), **Council**, **multi-model presets**, **Companion**, **Multiplexer/tmux runtime**, or **Interview**.
+- **No custom tools.** omo-slim ships `ast_grep_search`/`ast_grep_replace`/`webfetch`; on Codex these are provided by host-native tools instead.
+- **No per-agent skill-permission filtering** and **no foreground model fallback** (both require OpenCode runtime APIs).
+
 ## What it does not do
 
-- No MCP servers, Council workflow, Companion process, multiplexer/tmux runtime, or OpenCode runtime assumptions.
-- No custom Codex TUI mode or keybinding registration.
 - No automatic native agent replacement from marketplace install alone; the setup command performs replacement explicitly.
 - No hook trust config, dangerous permissions, sandbox changes, network changes, or uncertain feature flags.
-- No hardcoded per-role model, reasoning effort, or service tier.
+- No hardcoded per-role model, reasoning effort, or service tier (models are inherited from your Codex config, matching omo-slim's undefined defaults).
+- No separate reviewer agent (review is the oracle lane).
 
 ## Modes and opt-outs
 
-With the plugin enabled, Default-mode prompts receive orchestrator guidance. Codex native Plan/read-only mode remains native: the injected directive is subordinate to the active mode and says to plan only without write-capable delegation when the active instructions require read-only behavior.
+With the plugin enabled, the orchestrator directive is injected at session start and a short anchor is added each turn. Codex native Plan/read-only mode remains authoritative: the directive is advisory and says to plan only, without write-capable delegation, when the active mode requires read-only behavior.
 
-Opt out globally:
+Disable everything (both the session-start directive and the per-turn anchor):
 
 ```sh
 OMC_SLIM_DISABLE=1 codex
 ```
 
-Opt out for one prompt by prefixing it with either:
+`OMC_SLIM_DISABLE` accepts `1`, `true`, `yes`, or `on`.
+
+Opt out of a single prompt's per-turn anchor by prefixing it with either:
 
 ```text
 [no-omc]
 [omc-off]
 ```
 
+Note: a prompt prefix only suppresses that turn's anchor. It cannot un-inject the session-start directive already delivered earlier in the session; use `OMC_SLIM_DISABLE` to suppress the directive itself.
+
 ## Uninstall cleanup
 
-Use Codex plugin commands to remove the marketplace plugin. To undo native subagent replacement, run `oh-my-codex-slim rollback` or manually remove the six managed agent TOML files from `$CODEX_HOME/agents/` and delete the matching `[agents.<role>]` sections from `$CODEX_HOME/config.toml`. Backups created by setup have `.json` metadata and live under `$CODEX_HOME/omc-slim-backups/`.
+Use Codex plugin commands to remove the marketplace plugin. To undo native subagent replacement, run `oh-my-codex-slim rollback` or manually remove the managed agent TOML files (explorer, librarian, oracle, designer, fixer) from `$CODEX_HOME/agents/` and delete the matching `[agents.<role>]` sections from `$CODEX_HOME/config.toml`. Backups created by setup have `.json` metadata and live under `$CODEX_HOME/omc-slim-backups/`.

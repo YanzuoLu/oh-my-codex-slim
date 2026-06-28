@@ -1,4 +1,4 @@
 interface:
   display_name: Oh My Codex Slim Skill
   short_description: Skill entry for OMC Slim orchestration guidance.
-default_prompt: Use $oh-my-codex-slim for compact orchestration guidance with explorer, librarian, oracle, designer, fixer, and reviewer roles.
+default_prompt: Use $oh-my-codex-slim for compact orchestration guidance with explorer, librarian, oracle, designer, and fixer roles.
