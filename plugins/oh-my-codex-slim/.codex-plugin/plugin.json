@@ -1,0 +1,35 @@
+{
+  "name": "oh-my-codex-slim",
+  "version": "0.1.0",
+  "description": "Slim OMC-style orchestration workflow for Codex.",
+  "author": "YanzuoLu",
+  "homepage": "https://github.com/YanzuoLu/oh-my-codex-slim",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YanzuoLu/oh-my-codex-slim.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "workflow",
+    "orchestration",
+    "agents",
+    "hooks",
+    "skills"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Oh My Codex Slim",
+    "shortDescription": "Compact OMC orchestration guidance for Codex.",
+    "longDescription": "Oh My Codex Slim injects a concise orchestrator directive in Codex Default mode and ships skills plus reusable agent role definitions for a safe, lightweight workflow.",
+    "developerName": "YanzuoLu",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Hooks",
+      "Skills",
+      "Workflow",
+      "Context Injection"
+    ]
+  }
+}

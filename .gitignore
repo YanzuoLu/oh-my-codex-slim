@@ -1,0 +1,7 @@
+.slim/deepwork/
+node_modules/
+dist/
+coverage/
+.npm/
+.DS_Store
+*.log

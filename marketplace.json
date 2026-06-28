@@ -1,0 +1,22 @@
+{
+  "name": "oh-my-codex-slim",
+  "interface": {
+    "displayName": "Oh My Codex Slim",
+    "description": "Slim orchestration workflow assets for Codex."
+  },
+  "plugins": [
+    {
+      "name": "oh-my-codex-slim",
+      "description": "Injects compact OMC orchestration guidance and ships reusable Codex agent roles.",
+      "source": "./plugins/oh-my-codex-slim",
+      "category": "Developer Tools",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "interface": {
+        "displayName": "Oh My Codex Slim"
+      }
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# Keep deepwork notes visible to local search tools; do not edit their contents.
+!.slim/deepwork/
+!.slim/deepwork/**
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log

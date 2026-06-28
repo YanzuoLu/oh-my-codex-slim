@@ -1,0 +1,38 @@
+{
+  "name": "oh-my-codex-slim",
+  "version": "0.1.0",
+  "description": "Slim Codex orchestration workflow plugin and agent role installer.",
+  "type": "module",
+  "license": "MIT",
+  "author": "YanzuoLu",
+  "homepage": "https://github.com/YanzuoLu/oh-my-codex-slim#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YanzuoLu/oh-my-codex-slim.git"
+  },
+  "bin": {
+    "oh-my-codex-slim": "./scripts/install.mjs"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    ".agents/",
+    "marketplace.json",
+    "scripts/",
+    "plugins/"
+  ],
+  "scripts": {
+    "validate": "node scripts/validate.mjs",
+    "test": "npm run validate"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "codex",
+    "codex-plugin",
+    "agents",
+    "workflow",
+    "orchestration"
+  ]
+}
