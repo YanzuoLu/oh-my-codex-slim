@@ -1,4 +1,0 @@
-interface:
-  display_name: Oh My Codex Slim
-  short_description: Hook, skill, and setup flow for OMO-style Codex orchestration roles.
-default_prompt: Use Oh My Codex Slim to coordinate this Codex task with five OMO-style specialist lanes (explorer, librarian, oracle, designer, fixer) while preserving all active Codex instructions.

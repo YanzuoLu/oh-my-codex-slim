@@ -1,7 +1,7 @@
 {
   "name": "oh-my-codex-slim",
-  "version": "0.2.0",
-  "description": "OMO-slim orchestration port for Codex: hook, skill, and native subagent setup.",
+  "version": "0.2.1",
+  "description": "OMO-slim orchestration port for Codex: orchestrator hook, ported OMO skills, and five specialist agent roles.",
   "author": "YanzuoLu",
   "homepage": "https://github.com/YanzuoLu/oh-my-codex-slim",
   "repository": {
@@ -22,8 +22,8 @@
   "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "Oh My Codex Slim",
-    "shortDescription": "OMO-slim orchestration guidance and native subagent setup for Codex.",
-    "longDescription": "Oh My Codex Slim ports the OMO-slim orchestration contract to Codex with prompt-hook guidance, a workflow skill, and setup that replaces native subagent TOMLs with five OMO-style specialist lanes (explorer, librarian, oracle, designer, fixer). As in omo-slim, code review is the oracle lane; there is no separate reviewer agent. Runtime multi-agent behavior depends on the Codex host exposing native agent tools such as spawn_agent/list_agents/wait_agent and the model actually using them; otherwise the guidance remains usable directly.",
+    "shortDescription": "OMO-slim orchestration guidance and specialist agent setup for Codex.",
+    "longDescription": "Oh My Codex Slim ports the OMO-slim orchestration contract to Codex: the orchestrator directive is injected at SessionStart, omo skills are ported (simplify, deepwork, reflect, codemap, clonedeps, worktrees), and setup registers five OMO-style specialist lanes (explorer, librarian, oracle, designer, fixer) as Codex agents (Codex's built-in default/worker agents remain). As in omo-slim, code review is the oracle lane; there is no separate reviewer agent. Delegation uses Codex stable multi_agent tools (spawn_agent/wait_agent/resume_agent/close_agent) when the model chooses to delegate.",
     "developerName": "YanzuoLu",
     "category": "Developer Tools",
     "capabilities": [
@@ -31,7 +31,7 @@
       "Skills",
       "Workflow Guidance",
       "Context Injection",
-      "Native Subagent Setup"
+      "Specialist Agent Setup"
     ]
   }
 }

@@ -109,8 +109,8 @@ Create one folder per source repository under:
 ```
 
 Derive the safe name from the repository owner/name, not from the package name.
-For example, `https://github.com/opencode-ai/opencode.git` becomes
-`opencode-ai__opencode`. Replace `/` with `__`, strip common `.git` suffixes,
+For example, `https://github.com/babel/babel.git` becomes
+`babel__babel`. Replace `/` with `__`, strip common `.git` suffixes,
 and replace other unsafe path characters with `_`.
 
 If multiple packages come from the same monorepo, clone the repository once and
@@ -145,22 +145,22 @@ Write `.slim/clonedeps.json` so future agents know what exists:
   "updatedAt": "2026-05-12T00:00:00.000Z",
   "dependencies": [
     {
-      "name": "@opencode-ai/plugin",
-      "resolvedVersion": "1.3.17",
-      "repoUrl": "https://github.com/opencode-ai/opencode.git",
-      "ref": "v1.3.17",
-      "path": ".slim/clonedeps/repos/opencode-ai__opencode",
-      "packagePath": "packages/plugin",
-      "reason": "Plugin API source used by the project"
+      "name": "@babel/core",
+      "resolvedVersion": "7.24.0",
+      "repoUrl": "https://github.com/babel/babel.git",
+      "ref": "v7.24.0",
+      "path": ".slim/clonedeps/repos/babel__babel",
+      "packagePath": "packages/babel-core",
+      "reason": "Compiler core source used by the project"
     },
     {
-      "name": "@opencode-ai/sdk",
-      "resolvedVersion": "1.3.17",
-      "repoUrl": "https://github.com/opencode-ai/opencode.git",
-      "ref": "v1.3.17",
-      "path": ".slim/clonedeps/repos/opencode-ai__opencode",
-      "packagePath": "packages/sdk/js",
-      "reason": "Core SDK source used to inspect runtime behavior"
+      "name": "@babel/parser",
+      "resolvedVersion": "7.24.0",
+      "repoUrl": "https://github.com/babel/babel.git",
+      "ref": "v7.24.0",
+      "path": ".slim/clonedeps/repos/babel__babel",
+      "packagePath": "packages/babel-parser",
+      "reason": "Parser source used to inspect runtime behavior"
     }
   ]
 }

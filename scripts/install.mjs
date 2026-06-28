@@ -7,6 +7,17 @@ import { fileURLToPath } from 'node:url';
 
 const ROLE_NAMES = ['explorer', 'librarian', 'oracle', 'designer', 'fixer'];
 
+// Official Codex layout: `[agents.<name>]` holds config_file + description; the role's
+// config_file TOML layer holds developer_instructions. These descriptions are omo-slim's
+// verbatim agent descriptions ("Role guidance shown to Codex when choosing/spawning").
+const ROLE_DESCRIPTIONS = {
+  explorer: "Fast codebase search and pattern matching. Use for finding files, locating code patterns, and answering 'where is X?' questions.",
+  librarian: 'External documentation and library research. Use for official docs lookup, GitHub examples, and understanding library internals.',
+  oracle: 'Strategic technical advisor. Use for architecture decisions, complex debugging, code review, simplification, and engineering guidance.',
+  designer: 'UI/UX design, review, and implementation. Use for styling, responsive design, component architecture and visual polish.',
+  fixer: 'Fast implementation specialist. Receives complete context and task spec, executes code changes efficiently.'
+};
+
 class UsageError extends Error {
   constructor(message) {
     super(message);
@@ -256,7 +267,9 @@ function removeAgentTables(configText) {
 }
 
 function desiredAgentConfigSections() {
-  return ROLE_NAMES.map((role) => `[agents.${role}]\nconfig_file = "./agents/${role}.toml"`).join('\n\n');
+  return ROLE_NAMES.map(
+    (role) => `[agents.${role}]\nconfig_file = "./agents/${role}.toml"\ndescription = ${JSON.stringify(ROLE_DESCRIPTIONS[role])}`
+  ).join('\n\n');
 }
 
 function buildConfig(existingText) {

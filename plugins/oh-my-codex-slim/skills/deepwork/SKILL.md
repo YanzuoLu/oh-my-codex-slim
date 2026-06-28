@@ -106,5 +106,8 @@ Use the scheduler model throughout:
 - record which specialist owns each lane and its file/topic boundaries;
 - when delegating to a Codex native agent, wait for that agent to finish (for
   example via `wait_agent`) before consuming its results;
+- avoid blocking the orchestrator lane while delegated agents run; if no
+  independent work remains, stop briefly and let the agent's completion resume
+  the workflow;
 - do not advance to the next phase while a delegated specialist's result is still
   pending or unreconciled.

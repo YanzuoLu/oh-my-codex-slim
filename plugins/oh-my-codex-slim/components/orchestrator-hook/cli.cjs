@@ -3,15 +3,14 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
-// Per-turn role anchor (short). Distinct marker from the full directive so it is
-// clearly the lightweight per-turn reminder, not a re-stamp of the whole directive.
-// Deliberately Codex-appropriate: no OpenCode scheduler "wait for hook-driven
-// completion / do not advance dependent work" semantics (those stall the model on Codex).
-const PER_TURN_ANCHOR =
-  'OMC_SLIM_ANCHOR_V1 — OMC Slim orchestrator active: gate the current request\'s intent, ' +
-  'gather context before acting, delegate to a specialist lane (explorer, librarian, oracle, ' +
-  'designer, fixer) when the work fits one, and verify before shipping. Advisory and subordinate ' +
-  'to Codex system, developer, approval, sandbox, and active mode instructions.';
+// omo-slim's per-turn reminder (PHASE_REMINDER), ported to Codex: the only change
+// from omo's verbatim text is "hook-driven completion" -> "agent completion"
+// (omo's term is OpenCode-internal; on Codex the model waits with wait_agent).
+const PHASE_REMINDER =
+  '<internal_reminder>!IMPORTANT! Scheduler workflow: plan lanes/dependencies → ' +
+  'dispatch background specialists → track task IDs → wait for agent completion → ' +
+  'reconcile terminal results → verify. Do not poll running jobs, consume ' +
+  'running-job output, or advance dependent work. !END!</internal_reminder>';
 
 function isDisabled() {
   const value = process.env.OMC_SLIM_DISABLE;
@@ -41,10 +40,6 @@ function parseHookInput(input) {
   }
 }
 
-function isPromptOptedOut(prompt) {
-  return /^\s*(?:\[no-omc]|\[omc-off])/i.test(prompt);
-}
-
 async function loadDirective() {
   const directivePath = path.join(__dirname, 'directive.md');
   const contents = await fs.readFile(directivePath, 'utf8');
@@ -65,19 +60,15 @@ async function main() {
   const eventName = payload && typeof payload.hook_event_name === 'string' ? payload.hook_event_name : null;
 
   if (eventName === 'SessionStart') {
-    // Full orchestrator directive, once per session (persists across turns).
-    const additionalContext = await loadDirective();
-    emit('SessionStart', additionalContext);
+    // Full orchestrator directive, loaded once per session (omo delivers it via the
+    // OpenCode system channel; on Codex the official plugin pattern is SessionStart).
+    emit('SessionStart', await loadDirective());
     return;
   }
 
   if (eventName === 'UserPromptSubmit') {
-    const prompt = payload.prompt;
-    if (typeof prompt !== 'string' || isPromptOptedOut(prompt)) {
-      return;
-    }
-    // Short per-turn anchor only (not the full directive).
-    emit('UserPromptSubmit', PER_TURN_ANCHOR);
+    // Short per-turn reminder, mirroring omo-slim's PHASE_REMINDER.
+    emit('UserPromptSubmit', PHASE_REMINDER);
     return;
   }
 }
