@@ -14,7 +14,7 @@ Oh My Codex Slim is a Codex-oriented OMO-slim orchestration port. The marketplac
 ```sh
 codex plugin marketplace add YanzuoLu/oh-my-codex-slim
 codex plugin add oh-my-codex-slim@oh-my-codex-slim
-bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.1.1 oh-my-codex-slim install
+bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.1.2 oh-my-codex-slim install
 ```
 
 The third step is required because Codex marketplace plugins do not currently auto-register, disable, or replace native `[agents.*]` configuration. `oh-my-codex-slim install` creates a timestamped backup, removes existing top-level native agent TOMLs, writes the six managed role TOMLs, and rewrites `[agents.*]` config entries to point only at those roles.
@@ -64,13 +64,13 @@ bun scripts/install.mjs install --codex-home /path/to/.codex
 Roll back to the latest backup:
 
 ```sh
-bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.1.1 oh-my-codex-slim rollback
+bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.1.2 oh-my-codex-slim rollback
 ```
 
 Roll back to a specific backup:
 
 ```sh
-bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.1.1 oh-my-codex-slim rollback --backup /path/to/.codex/omc-slim-backups/<timestamp>
+bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.1.2 oh-my-codex-slim rollback --backup /path/to/.codex/omc-slim-backups/<timestamp>
 ```
 
 From a local checkout, `bun scripts/install.mjs rollback` and `node scripts/install.mjs rollback` are equivalent.

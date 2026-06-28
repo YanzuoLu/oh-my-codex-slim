@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+const fs = require('node:fs/promises');
+const path = require('node:path');
 
 function isDisabled() {
   const value = process.env.OMC_SLIM_DISABLE;
@@ -39,9 +38,7 @@ function isPromptOptedOut(prompt) {
 }
 
 async function loadDirective() {
-  const currentFile = fileURLToPath(import.meta.url);
-  const currentDir = path.dirname(currentFile);
-  const directivePath = path.join(currentDir, 'directive.md');
+  const directivePath = path.join(__dirname, 'directive.md');
   const contents = await fs.readFile(directivePath, 'utf8');
   return contents.replace(/\r\n/g, '\n').trim();
 }

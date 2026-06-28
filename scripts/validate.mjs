@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), '..');
 
 const roles = ['explorer', 'librarian', 'oracle', 'designer', 'fixer', 'reviewer'];
-const hookCli = 'plugins/oh-my-codex-slim/components/orchestrator-hook/cli.js';
+const hookCli = 'plugins/oh-my-codex-slim/components/orchestrator-hook/cli.cjs';
 const jsonFiles = [
   'package.json',
   'marketplace.json',
@@ -201,6 +201,27 @@ async function validateHook() {
       parsed.hookSpecificOutput.additionalContext.includes('OMC_SLIM_DIRECTIVE_V1'),
     'Hook output must include directive marker context.'
   );
+
+  const pluginCacheLikeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'omc-slim-hook-cache-'));
+  try {
+    const cacheCli = path.join(pluginCacheLikeDir, 'cli.cjs');
+    await fs.copyFile(path.join(repoRoot, hookCli), cacheCli);
+    await fs.copyFile(
+      path.join(repoRoot, 'plugins/oh-my-codex-slim/components/orchestrator-hook/directive.md'),
+      path.join(pluginCacheLikeDir, 'directive.md')
+    );
+    const cachePositive = runNode([cacheCli, 'hook', 'user-prompt-submit'], {
+      input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'Implement this.' }),
+      env: { OMC_SLIM_DISABLE: '' }
+    });
+    const cacheParsed = JSON.parse(cachePositive.stdout);
+    assert(
+      cacheParsed.hookSpecificOutput?.additionalContext?.includes('OMC_SLIM_DIRECTIVE_V1'),
+      'Hook CLI must run from a plugin-cache-like directory without package.json.'
+    );
+  } finally {
+    await fs.rm(pluginCacheLikeDir, { recursive: true, force: true });
+  }
 
   for (const value of ['1', 'true', 'yes']) {
     const disabled = runHook(JSON.stringify({ hook_event_name: 'UserPromptSubmit', prompt: 'Implement this.' }), {

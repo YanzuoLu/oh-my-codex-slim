@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/components/orchestrator-hook/cli.js\" hook user-prompt-submit",
+            "command": "node \"${PLUGIN_ROOT}/components/orchestrator-hook/cli.cjs\" hook user-prompt-submit",
             "timeout": 7
           }
         ]
