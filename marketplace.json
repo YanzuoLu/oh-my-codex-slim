@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "oh-my-codex-slim",
-      "description": "Injects compact OMC orchestration guidance and ships reusable Codex agent roles.",
+      "description": "Ports OMO-slim orchestration to Codex with a hook, skill, five OMO-style lanes, and a strict reviewer mapping.",
       "source": "./plugins/oh-my-codex-slim",
       "category": "Developer Tools",
       "policy": {

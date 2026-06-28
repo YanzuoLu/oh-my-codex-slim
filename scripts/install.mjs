@@ -15,45 +15,54 @@ class UsageError extends Error {
 }
 
 function usage() {
-  return `oh-my-codex-slim installer
+  return `oh-my-codex-slim native subagent setup
 
 Usage:
-  oh-my-codex-slim [install] [--dry-run] [--codex-home <path>] [--force]
-  node scripts/install.mjs [install] [--dry-run] [--codex-home <path>] [--force]
+  oh-my-codex-slim [install|setup] [--dry-run] [--codex-home <path>]
+  oh-my-codex-slim rollback [--codex-home <path>] [--backup <path>]
+
+Commands:
+  install, setup       Replace native Codex agent TOMLs/config with the OMC Slim managed role set.
+  rollback             Restore the latest or selected OMC Slim backup.
 
 Options:
-  --dry-run            Print planned changes without writing files.
+  --dry-run            Print planned setup changes without writing files.
   --codex-home <path>  Use a specific Codex home. Defaults to CODEX_HOME or ~/.codex.
-  --force              Back up and replace differing managed agent/config entries.
+  --backup <path>      Roll back from a specific backup directory.
   --help, -h           Show this help.
 `;
 }
 
 function parseArgs(argv) {
   const options = {
-    command: 'install',
+    command: null,
     codexHome: null,
+    backup: null,
     dryRun: false,
-    force: false,
     help: false
   };
   const positionals = [];
 
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
     if (arg === '--dry-run') {
       options.dryRun = true;
-    } else if (arg === '--force') {
-      options.force = true;
     } else if (arg === '--help' || arg === '-h') {
       options.help = true;
     } else if (arg === '--codex-home') {
-      const value = argv[i + 1];
+      const value = argv[index + 1];
       if (!value || value.startsWith('--')) {
         throw new UsageError('Missing value for --codex-home.');
       }
       options.codexHome = value;
-      i += 1;
+      index += 1;
+    } else if (arg === '--backup') {
+      const value = argv[index + 1];
+      if (!value || value.startsWith('--')) {
+        throw new UsageError('Missing value for --backup.');
+      }
+      options.backup = value;
+      index += 1;
     } else if (arg.startsWith('--')) {
       throw new UsageError(`Unknown option: ${arg}`);
     } else {
@@ -64,8 +73,16 @@ function parseArgs(argv) {
   if (positionals.length > 1) {
     throw new UsageError(`Unexpected arguments: ${positionals.join(' ')}`);
   }
-  if (positionals.length === 1 && positionals[0] !== 'install') {
-    throw new UsageError(`Unknown subcommand: ${positionals[0]}`);
+
+  options.command = positionals[0] || 'install';
+  if (!['install', 'setup', 'rollback'].includes(options.command)) {
+    throw new UsageError(`Unknown subcommand: ${options.command}`);
+  }
+  if (options.command !== 'rollback' && options.backup) {
+    throw new UsageError('--backup is only valid with rollback.');
+  }
+  if (options.command === 'rollback' && options.dryRun) {
+    throw new UsageError('--dry-run is only valid with install/setup.');
   }
 
   return options;
@@ -89,11 +106,15 @@ function resolveCodexHome(flagValue) {
   return path.resolve(expandHome(home));
 }
 
+function resolveBackupPath(backupPath) {
+  return path.resolve(expandHome(backupPath));
+}
+
 async function readOptional(filePath) {
   try {
     return await fs.readFile(filePath, 'utf8');
   } catch (error) {
-    if (error && error.code === 'ENOENT') {
+    if (error?.code === 'ENOENT') {
       return null;
     }
     throw error;
@@ -105,11 +126,45 @@ async function pathExists(filePath) {
     await fs.access(filePath);
     return true;
   } catch (error) {
-    if (error && error.code === 'ENOENT') {
+    if (error?.code === 'ENOENT') {
       return false;
     }
     throw error;
   }
+}
+
+async function lstatOptional(filePath) {
+  try {
+    return await fs.lstat(filePath);
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function isDirectory(filePath) {
+  try {
+    return (await fs.lstat(filePath)).isDirectory();
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function assertNotSymlink(filePath, label) {
+  const stat = await lstatOptional(filePath);
+  if (stat?.isSymbolicLink()) {
+    throw new Error(`${label} must not be a symlink: ${filePath}`);
+  }
+}
+
+async function assertManagedTargetsSafe(codexHome) {
+  await assertNotSymlink(path.join(codexHome, 'config.toml'), '$CODEX_HOME/config.toml');
+  await assertNotSymlink(path.join(codexHome, 'agents'), '$CODEX_HOME/agents');
 }
 
 async function atomicWrite(filePath, contents) {
@@ -124,21 +179,33 @@ function timestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
-async function nextBackupPath(filePath) {
-  const base = `${filePath}.bak.${timestamp()}`;
-  let candidate = base;
+async function nextBackupDir(codexHome) {
+  const root = path.join(codexHome, 'omc-slim-backups');
+  const baseName = timestamp();
+  let candidate = path.join(root, baseName);
   let index = 1;
   while (await pathExists(candidate)) {
-    candidate = `${base}.${index}`;
+    candidate = path.join(root, `${baseName}-${index}`);
     index += 1;
   }
   return candidate;
 }
 
-async function backupFile(filePath) {
-  const backupPath = await nextBackupPath(filePath);
-  await fs.copyFile(filePath, backupPath);
-  return backupPath;
+async function copyRecursive(sourcePath, destPath) {
+  const stat = await fs.lstat(sourcePath);
+  await fs.mkdir(path.dirname(destPath), { recursive: true });
+
+  if (stat.isDirectory()) {
+    await fs.mkdir(destPath, { recursive: true });
+    for (const entry of await fs.readdir(sourcePath, { withFileTypes: true })) {
+      await copyRecursive(path.join(sourcePath, entry.name), path.join(destPath, entry.name));
+    }
+  } else if (stat.isSymbolicLink()) {
+    const target = await fs.readlink(sourcePath);
+    await fs.symlink(target, destPath);
+  } else if (stat.isFile()) {
+    await fs.copyFile(sourcePath, destPath);
+  }
 }
 
 async function loadSourceAgents(sourceAgentsDir) {
@@ -151,235 +218,356 @@ async function loadSourceAgents(sourceAgentsDir) {
   return sources;
 }
 
-async function planAgents(sourceAgents, destAgentsDir, force) {
-  const plans = [];
+function tableName(line) {
+  const match = line.match(/^\s*\[([^\[\]][^\]]*)\]\s*(?:#.*)?$/);
+  return match ? match[1].trim() : null;
+}
+
+function isAnyTableHeader(line) {
+  return /^\s*\[+[^\]]+\]+\s*(?:#.*)?$/.test(line);
+}
+
+function isAgentSubtable(line) {
+  const name = tableName(line);
+  return Boolean(name && name.startsWith('agents.'));
+}
+
+function removeAgentTables(configText) {
+  const lines = configText.replace(/\r\n/g, '\n').split('\n');
+  const kept = [];
+
+  for (let index = 0; index < lines.length; ) {
+    if (isAgentSubtable(lines[index])) {
+      index += 1;
+      while (index < lines.length && !isAnyTableHeader(lines[index])) {
+        index += 1;
+      }
+      continue;
+    }
+
+    kept.push(lines[index]);
+    index += 1;
+  }
+
+  while (kept.length > 0 && kept[kept.length - 1].trim() === '') {
+    kept.pop();
+  }
+  return kept.join('\n');
+}
+
+function desiredAgentConfigSections() {
+  return ROLE_NAMES.map((role) => `[agents.${role}]\nconfig_file = "./agents/${role}.toml"`).join('\n\n');
+}
+
+function buildConfig(existingText) {
+  const base = removeAgentTables(existingText || '');
+  const agentSections = desiredAgentConfigSections();
+  return base.length > 0 ? `${base}\n\n${agentSections}\n` : `${agentSections}\n`;
+}
+
+async function listTopLevelTomls(agentsDir) {
+  if (!(await pathExists(agentsDir))) {
+    return [];
+  }
+  if (!(await isDirectory(agentsDir))) {
+    throw new Error(`${agentsDir} exists but is not a directory.`);
+  }
+
+  const names = [];
+  for (const entry of await fs.readdir(agentsDir, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith('.toml')) {
+      names.push(entry.name);
+    }
+  }
+  return names.sort();
+}
+
+async function agentsMatchDesired(agentsDir, sourceAgents) {
+  const expectedNames = ROLE_NAMES.map((role) => `${role}.toml`).sort();
+  const currentNames = await listTopLevelTomls(agentsDir);
+  if (currentNames.length !== expectedNames.length) {
+    return false;
+  }
+  for (let index = 0; index < expectedNames.length; index += 1) {
+    if (currentNames[index] !== expectedNames[index]) {
+      return false;
+    }
+  }
 
   for (const role of ROLE_NAMES) {
-    const source = sourceAgents.get(role);
-    const destPath = path.join(destAgentsDir, `${role}.toml`);
-    const existing = await readOptional(destPath);
-
-    if (existing === null) {
-      plans.push({ role, destPath, contents: source.contents, action: 'create' });
-    } else if (existing === source.contents) {
-      plans.push({ role, destPath, contents: source.contents, action: 'unchanged' });
-    } else if (force) {
-      plans.push({ role, destPath, contents: source.contents, action: 'overwrite' });
-    } else {
-      plans.push({
-        role,
-        destPath,
-        contents: source.contents,
-        action: 'conflict',
-        message: `Agent file exists and differs: ${destPath}. Re-run with --force to back it up and replace it.`
-      });
+    const current = await readOptional(path.join(agentsDir, `${role}.toml`));
+    if (current !== sourceAgents.get(role).contents) {
+      return false;
     }
   }
-
-  return plans;
+  return true;
 }
 
-function parseTomlValue(line) {
-  const match = line.match(/^\s*config_file\s*=\s*(["'])(.*?)\1\s*(?:#.*)?$/);
-  return match ? match[2] : null;
-}
-
-function findTable(lines, tableName) {
-  let start = -1;
-  let end = lines.length;
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^\s*\[([^\]]+)]\s*(?:#.*)?$/);
-    if (!match) {
-      continue;
-    }
-
-    const currentName = match[1].trim();
-    if (currentName === tableName) {
-      start = index;
-      end = lines.length;
-    } else if (start !== -1) {
-      end = index;
-      break;
-    }
-  }
-
-  return start === -1 ? null : { start, end };
-}
-
-function planConfig(existingText, configPath, force) {
-  const exists = existingText !== null;
-  const startingText = existingText ?? '';
-  const lines = startingText.replace(/\r\n/g, '\n').split('\n');
-  if (startingText === '') {
-    lines.length = 0;
-  }
-
-  const changes = [];
-  const conflicts = [];
-
-  for (const role of ROLE_NAMES) {
-    const tableName = `agents.${role}`;
-    const expected = `./agents/${role}.toml`;
-    const expectedLine = `config_file = "${expected}"`;
-    const table = findTable(lines, tableName);
-
-    if (!table) {
-      if (lines.length > 0 && lines[lines.length - 1] !== '') {
-        lines.push('');
-      }
-      lines.push(`[${tableName}]`, expectedLine);
-      changes.push(`add [${tableName}]`);
-      continue;
-    }
-
-    let configLineIndex = -1;
-    for (let index = table.start + 1; index < table.end; index += 1) {
-      if (/^\s*config_file\s*=/.test(lines[index])) {
-        configLineIndex = index;
-        break;
-      }
-    }
-
-    if (configLineIndex === -1) {
-      lines.splice(table.start + 1, 0, expectedLine);
-      changes.push(`add config_file in [${tableName}]`);
-      continue;
-    }
-
-    const currentValue = parseTomlValue(lines[configLineIndex]);
-    if (currentValue === expected) {
-      continue;
-    }
-
-    if (!force) {
-      conflicts.push(
-        `Config entry [${tableName}] has a different config_file in ${configPath}. Re-run with --force to back up config.toml and replace that managed entry.`
-      );
-      continue;
-    }
-
-    lines[configLineIndex] = expectedLine;
-    changes.push(`update config_file in [${tableName}]`);
-  }
-
-  let nextText = lines.join('\n');
-  if (nextText.length > 0 && !nextText.endsWith('\n')) {
-    nextText += '\n';
-  }
+async function planInstall({ codexHome, sourceAgents }) {
+  await assertManagedTargetsSafe(codexHome);
+  const agentsDir = path.join(codexHome, 'agents');
+  const configPath = path.join(codexHome, 'config.toml');
+  const existingConfig = await readOptional(configPath);
+  const nextConfig = buildConfig(existingConfig || '');
+  const existingTomls = await listTopLevelTomls(agentsDir);
+  const agentsMatch = await agentsMatchDesired(agentsDir, sourceAgents);
+  const configMatch = existingConfig === nextConfig;
 
   return {
+    codexHome,
+    agentsDir,
     configPath,
-    exists,
-    changes,
-    conflicts,
-    changed: changes.length > 0,
-    nextText
+    existingConfig,
+    nextConfig,
+    existingTomls,
+    agentsMatch,
+    configMatch,
+    changed: !agentsMatch || !configMatch
   };
 }
 
-function printPlan({ codexHome, agentPlans, configPlan, dryRun, force }) {
-  console.log('oh-my-codex-slim installer');
-  console.log(`Codex home: ${codexHome}`);
-  console.log(`Mode: ${dryRun ? 'dry run' : 'install'}${force ? ' with --force' : ''}`);
+function printInstallPlan(plan, dryRun) {
+  console.log('oh-my-codex-slim native subagent setup');
+  console.log(`Codex home: ${plan.codexHome}`);
+  console.log(`Mode: ${dryRun ? 'dry run' : 'install'}`);
   console.log('');
-  console.log('Agents:');
-  for (const plan of agentPlans) {
-    const label = {
-      create: 'create',
-      unchanged: 'unchanged',
-      overwrite: 'backup + overwrite',
-      conflict: 'conflict'
-    }[plan.action];
-    console.log(`- ${label}: ${plan.destPath}`);
-  }
-  console.log('');
-  console.log('Config:');
-  if (configPlan.conflicts.length > 0) {
-    for (const conflict of configPlan.conflicts) {
-      console.log(`- conflict: ${conflict}`);
-    }
-  }
-  if (configPlan.changes.length === 0 && configPlan.conflicts.length === 0) {
-    console.log(`- unchanged: ${configPlan.configPath}`);
-  } else if (configPlan.changes.length > 0) {
-    const action = configPlan.exists ? 'backup + update' : 'create';
-    console.log(`- ${action}: ${configPlan.configPath}`);
-    for (const change of configPlan.changes) {
-      console.log(`  - ${change}`);
-    }
-  }
-  console.log('');
-}
 
-async function applyAgentPlans(agentPlans, destAgentsDir) {
-  await fs.mkdir(destAgentsDir, { recursive: true });
-  for (const plan of agentPlans) {
-    if (plan.action === 'create') {
-      await atomicWrite(plan.destPath, plan.contents);
-      console.log(`Created ${plan.destPath}`);
-    } else if (plan.action === 'overwrite') {
-      const backupPath = await backupFile(plan.destPath);
-      await atomicWrite(plan.destPath, plan.contents);
-      console.log(`Backed up ${plan.destPath} to ${backupPath}`);
-      console.log(`Updated ${plan.destPath}`);
-    }
-  }
-}
-
-async function applyConfigPlan(configPlan) {
-  if (!configPlan.changed) {
+  if (!plan.changed) {
+    console.log('Status: unchanged; OMC Slim native agent setup is already installed.');
     return;
   }
 
-  await fs.mkdir(path.dirname(configPlan.configPath), { recursive: true });
-  if (configPlan.exists) {
-    const backupPath = await backupFile(configPlan.configPath);
-    console.log(`Backed up ${configPlan.configPath} to ${backupPath}`);
+  console.log(`${dryRun ? 'Would create' : 'Will create'} backup under: ${path.join(plan.codexHome, 'omc-slim-backups', '<timestamp>')}`);
+  console.log(`Agents: ${plan.agentsMatch ? 'unchanged' : 'replace top-level *.toml with explorer, librarian, oracle, designer, fixer, reviewer'}`);
+  if (!plan.agentsMatch && plan.existingTomls.length > 0) {
+    console.log(`  Existing top-level TOML files to remove: ${plan.existingTomls.join(', ')}`);
   }
-  await atomicWrite(configPlan.configPath, configPlan.nextText);
-  console.log(`${configPlan.exists ? 'Updated' : 'Created'} ${configPlan.configPath}`);
+  console.log('  Non-TOML files under agents/ are left in place.');
+  console.log(`Config: ${plan.configMatch ? 'unchanged' : 'remove existing [agents.*] tables and append OMC Slim role entries'}`);
+  console.log('');
+}
+
+async function createBackup(plan) {
+  const backupDir = await nextBackupDir(plan.codexHome);
+  const configExisted = await pathExists(plan.configPath);
+  const agentsDirExisted = await isDirectory(plan.agentsDir);
+  await fs.mkdir(backupDir, { recursive: true });
+
+  if (configExisted) {
+    await copyRecursive(plan.configPath, path.join(backupDir, 'config.toml'));
+  }
+  if (agentsDirExisted) {
+    await copyRecursive(plan.agentsDir, path.join(backupDir, 'agents'));
+  }
+
+  const manifest = {
+    createdAt: new Date().toISOString(),
+    codexHome: plan.codexHome,
+    configExisted,
+    agentsDirExisted,
+    roles: ROLE_NAMES
+  };
+  await fs.writeFile(path.join(backupDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return backupDir;
+}
+
+async function removeTopLevelTomls(agentsDir) {
+  if (!(await pathExists(agentsDir))) {
+    return;
+  }
+  for (const name of await listTopLevelTomls(agentsDir)) {
+    await fs.unlink(path.join(agentsDir, name));
+  }
+}
+
+async function writeAgents(agentsDir, sourceAgents) {
+  await fs.mkdir(agentsDir, { recursive: true });
+  for (const role of ROLE_NAMES) {
+    await atomicWrite(path.join(agentsDir, `${role}.toml`), sourceAgents.get(role).contents);
+  }
 }
 
 async function install(options) {
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const repoRoot = path.resolve(scriptDir, '..');
   const sourceAgentsDir = path.join(repoRoot, 'plugins', 'oh-my-codex-slim', 'agents');
-  const codexHome = resolveCodexHome(options.codexHome);
-  const destAgentsDir = path.join(codexHome, 'agents');
-  const configPath = path.join(codexHome, 'config.toml');
-
   const sourceAgents = await loadSourceAgents(sourceAgentsDir);
-  const agentPlans = await planAgents(sourceAgents, destAgentsDir, options.force);
-  const existingConfig = await readOptional(configPath);
-  const configPlan = planConfig(existingConfig, configPath, options.force);
-  const conflicts = [
-    ...agentPlans.filter((plan) => plan.action === 'conflict').map((plan) => plan.message),
-    ...configPlan.conflicts
-  ];
+  const codexHome = resolveCodexHome(options.codexHome);
+  const plan = await planInstall({ codexHome, sourceAgents });
 
-  printPlan({ codexHome, agentPlans, configPlan, dryRun: options.dryRun, force: options.force });
+  printInstallPlan(plan, options.dryRun);
 
   if (options.dryRun) {
-    if (conflicts.length > 0) {
-      console.log('Dry run found conflicts; no files were written.');
-    } else {
-      console.log('Dry run complete; no files were written.');
-    }
+    console.log('Dry run complete; no files were written.');
     return;
   }
 
-  if (conflicts.length > 0) {
-    for (const conflict of conflicts) {
-      console.error(conflict);
-    }
-    process.exitCode = 1;
+  if (!plan.changed) {
     return;
   }
 
-  await applyAgentPlans(agentPlans, destAgentsDir);
-  await applyConfigPlan(configPlan);
+  const backupDir = await createBackup(plan);
+  console.log(`Created backup: ${backupDir}`);
+
+  if (!plan.agentsMatch) {
+    await removeTopLevelTomls(plan.agentsDir);
+    await writeAgents(plan.agentsDir, sourceAgents);
+    console.log(`Replaced top-level agent TOMLs in ${plan.agentsDir}`);
+  }
+
+  if (!plan.configMatch) {
+    await atomicWrite(plan.configPath, plan.nextConfig);
+    console.log(`Updated ${plan.configPath}`);
+  }
+
   console.log('Install complete.');
+}
+
+async function latestBackupDir(codexHome) {
+  const root = path.join(codexHome, 'omc-slim-backups');
+  if (!(await isDirectory(root))) {
+    throw new Error(`No backup directory found under ${root}.`);
+  }
+
+  const dirs = [];
+  for (const entry of await fs.readdir(root, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      dirs.push(entry.name);
+    }
+  }
+  dirs.sort();
+  for (let index = dirs.length - 1; index >= 0; index -= 1) {
+    const candidate = path.join(root, dirs[index]);
+    try {
+      await loadAndValidateManifest(candidate, codexHome);
+      return candidate;
+    } catch {
+      // Ignore invalid backup directories when choosing the latest usable backup.
+    }
+  }
+  throw new Error(`No valid backups found under ${root}.`);
+}
+
+function arraysEqual(left, right) {
+  return Array.isArray(left) && left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function validateManifestShape(manifest, backupDir, codexHome) {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw new Error(`Invalid backup manifest in ${backupDir}: expected an object.`);
+  }
+  if (typeof manifest.createdAt !== 'string' || manifest.createdAt.length === 0) {
+    throw new Error(`Invalid backup manifest in ${backupDir}: missing createdAt string.`);
+  }
+  if (typeof manifest.codexHome !== 'string' || manifest.codexHome.length === 0) {
+    throw new Error(`Invalid backup manifest in ${backupDir}: missing codexHome string.`);
+  }
+  if (typeof manifest.configExisted !== 'boolean') {
+    throw new Error(`Invalid backup manifest in ${backupDir}: missing configExisted boolean.`);
+  }
+  if (typeof manifest.agentsDirExisted !== 'boolean') {
+    throw new Error(`Invalid backup manifest in ${backupDir}: missing agentsDirExisted boolean.`);
+  }
+  if (!arraysEqual(manifest.roles, ROLE_NAMES)) {
+    throw new Error(`Invalid backup manifest in ${backupDir}: roles must exactly match OMC Slim roles.`);
+  }
+  if (path.resolve(manifest.codexHome) !== codexHome) {
+    throw new Error(`Backup ${backupDir} belongs to a different Codex home: ${manifest.codexHome}`);
+  }
+}
+
+async function loadAndValidateManifest(backupDir, codexHome) {
+  const backupStat = await lstatOptional(backupDir);
+  if (!backupStat) {
+    throw new Error(`Backup directory does not exist: ${backupDir}`);
+  }
+  if (backupStat.isSymbolicLink() || !backupStat.isDirectory()) {
+    throw new Error(`Backup path is not a directory: ${backupDir}`);
+  }
+
+  const manifestPath = path.join(backupDir, 'manifest.json');
+  const text = await readOptional(manifestPath);
+  if (text === null) {
+    throw new Error(`Backup directory is missing manifest.json: ${backupDir}`);
+  }
+
+  let manifest;
+  try {
+    manifest = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Backup manifest is not valid JSON in ${backupDir}: ${error?.message || String(error)}`);
+  }
+
+  validateManifestShape(manifest, backupDir, codexHome);
+
+  if (manifest.configExisted) {
+    const backupConfigStat = await lstatOptional(path.join(backupDir, 'config.toml'));
+    if (!backupConfigStat || backupConfigStat.isSymbolicLink() || !backupConfigStat.isFile()) {
+      throw new Error(`Backup manifest says config.toml existed, but backup config.toml is missing or invalid: ${backupDir}`);
+    }
+  }
+  if (manifest.agentsDirExisted && !(await isDirectory(path.join(backupDir, 'agents')))) {
+    throw new Error(`Backup manifest says agents/ existed, but backup is missing agents/: ${backupDir}`);
+  }
+
+  return manifest;
+}
+
+async function removeRoleTomls(agentsDir) {
+  if (!(await pathExists(agentsDir))) {
+    return;
+  }
+  if (!(await isDirectory(agentsDir))) {
+    throw new Error(`${agentsDir} exists but is not a directory.`);
+  }
+  for (const role of ROLE_NAMES) {
+    const filePath = path.join(agentsDir, `${role}.toml`);
+    if (await pathExists(filePath)) {
+      await fs.unlink(filePath);
+    }
+  }
+  try {
+    await fs.rmdir(agentsDir);
+  } catch (error) {
+    if (error?.code !== 'ENOTEMPTY' && error?.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+}
+
+async function rollback(options) {
+  const codexHome = resolveCodexHome(options.codexHome);
+  const backupDir = options.backup ? resolveBackupPath(options.backup) : await latestBackupDir(codexHome);
+  const manifest = await loadAndValidateManifest(backupDir, codexHome);
+  const configPath = path.join(codexHome, 'config.toml');
+  const agentsDir = path.join(codexHome, 'agents');
+
+  await assertManagedTargetsSafe(codexHome);
+
+  console.log('oh-my-codex-slim rollback');
+  console.log(`Codex home: ${codexHome}`);
+  console.log(`Backup: ${backupDir}`);
+  console.log('');
+
+  if (manifest.configExisted) {
+    await fs.mkdir(codexHome, { recursive: true });
+    await copyRecursive(path.join(backupDir, 'config.toml'), configPath);
+    console.log(`Restored config.toml to ${configPath}`);
+  } else {
+    await fs.rm(configPath, { force: true });
+    console.log(`Removed ${configPath} because no prior config.toml existed.`);
+  }
+
+  if (manifest.agentsDirExisted) {
+    await fs.rm(agentsDir, { recursive: true, force: true });
+    await copyRecursive(path.join(backupDir, 'agents'), agentsDir);
+    console.log(`Restored agents directory to ${agentsDir}`);
+  } else {
+    await removeRoleTomls(agentsDir);
+    console.log(`Removed OMC Slim role TOMLs from ${agentsDir} because no prior agents directory existed.`);
+  }
+
+  console.log('Rollback complete.');
 }
 
 async function main() {
@@ -402,10 +590,14 @@ async function main() {
     return;
   }
 
-  await install(options);
+  if (options.command === 'rollback') {
+    await rollback(options);
+  } else {
+    await install(options);
+  }
 }
 
 main().catch((error) => {
-  console.error(`oh-my-codex-slim install failed: ${error && error.message ? error.message : String(error)}`);
+  console.error(`oh-my-codex-slim failed: ${error?.message || String(error)}`);
   process.exitCode = 1;
 });

@@ -19,6 +19,10 @@ const jsonFiles = [
   'plugins/oh-my-codex-slim/hooks/hooks.json'
 ];
 const syntaxFiles = ['scripts/install.mjs', 'scripts/validate.mjs', hookCli];
+const openAiYamlFiles = [
+  'plugins/oh-my-codex-slim/agents/openai.yaml',
+  'plugins/oh-my-codex-slim/skills/oh-my-codex-slim/agents/openai.yaml'
+];
 
 function fail(message) {
   throw new Error(message);
@@ -30,13 +34,17 @@ function assert(condition, message) {
   }
 }
 
-function runNode(args, options = {}) {
-  const result = spawnSync(process.execPath, args, {
+function runNodeRaw(args, options = {}) {
+  return spawnSync(process.execPath, args, {
     cwd: repoRoot,
     encoding: 'utf8',
     input: options.input,
     env: { ...process.env, ...(options.env || {}) }
   });
+}
+
+function runNode(args, options = {}) {
+  const result = runNodeRaw(args, options);
 
   if (result.status !== 0) {
     fail(
@@ -44,6 +52,15 @@ function runNode(args, options = {}) {
     );
   }
 
+  return result;
+}
+
+function runNodeExpectFailure(args, options = {}) {
+  const result = runNodeRaw(args, options);
+  assert(
+    result.status !== 0,
+    `Command should have failed but exited 0: node ${args.join(' ')}\nstdout:\n${result.stdout || ''}\nstderr:\n${result.stderr || ''}`
+  );
   return result;
 }
 
@@ -61,6 +78,105 @@ async function validateJson() {
   for (const file of jsonFiles) {
     JSON.parse(await readText(file));
   }
+}
+
+async function validateVersions() {
+  const packageJson = JSON.parse(await readText('package.json'));
+  const pluginJson = JSON.parse(await readText('plugins/oh-my-codex-slim/.codex-plugin/plugin.json'));
+  assert(typeof packageJson.version === 'string' && packageJson.version.length > 0, 'package.json missing version.');
+  assert(packageJson.version === pluginJson.version, 'package.json and plugin.json versions must match.');
+}
+
+async function validateOpenAiYaml() {
+  for (const file of openAiYamlFiles) {
+    const text = await readText(file);
+    assert(text.includes('interface:'), `${file} must contain interface metadata.`);
+    assert(text.includes('default_prompt:'), `${file} must contain default_prompt.`);
+  }
+}
+
+function requireText(text, needle, file) {
+  assert(text.includes(needle), `${file} must contain semantic marker: ${needle}`);
+}
+
+async function validatePromptSemantics() {
+  const directivePath = 'plugins/oh-my-codex-slim/components/orchestrator-hook/directive.md';
+  const skillPath = 'plugins/oh-my-codex-slim/skills/oh-my-codex-slim/SKILL.md';
+  const directive = await readText(directivePath);
+  const skill = await readText(skillPath);
+
+  assert(directive.length > 4500, 'Directive must be a substantive OMO-slim/Codex orchestration contract.');
+  for (const marker of [
+    'OMC_SLIM_DIRECTIVE_V1',
+    'Intent Gate',
+    'Auto-Continue',
+    'Context-Completion Gate',
+    'Ask Gate',
+    'Path Selection',
+    'Delegation',
+    'Parallel',
+    'Validation',
+    'Manual QA Gate',
+    'Design Handoff',
+    'spawn_agent',
+    'list_agents',
+    'wait_agent',
+    'followup_task',
+    'send_message',
+    'interrupt_agent',
+    'task_name',
+    'agent_type',
+    'lowercase letters, digits, and underscores only',
+    'Never simulate native live-agent activity',
+    'UNCONDITIONAL APPROVAL'
+  ]) {
+    requireText(directive, marker, directivePath);
+  }
+  for (const forbidden of ['task()', 'background_output', 'bg_', 'ses_', '.omo/notepads', 'Background Job Board', 'Boulder', 'CSV agent jobs']) {
+    assert(!directive.includes(forbidden), `${directivePath} must not contain OpenCode-only term: ${forbidden}`);
+  }
+
+  for (const [file, text] of [
+    [skillPath, skill],
+    ...roles.map((role) => [`plugins/oh-my-codex-slim/agents/${role}.toml`, null])
+  ]) {
+    const fileText = text ?? (await readText(file));
+    for (const forbidden of ['task()', 'background_output', 'bg_', 'ses_', '.omo/notepads', 'Background Job Board', 'Boulder', 'CSV agent jobs']) {
+      assert(!fileText.includes(forbidden), `${file} must not contain OpenCode-only term: ${forbidden}`);
+    }
+  }
+
+  assert(skill.length > 2500, 'Skill must be a usable OMO orchestration workflow entry.');
+  for (const marker of [
+    'Intent Gate',
+    'spawn_agent',
+    'list_agents',
+    'wait_agent',
+    'followup_task',
+    'agent_type',
+    'lowercase letters, digits, and underscores only',
+    'Never simulate native live-agent activity',
+    'Manual QA Gate',
+    'Design Handoff',
+    'should I continue',
+    'UNCONDITIONAL APPROVAL'
+  ]) {
+    requireText(skill, marker, skillPath);
+  }
+
+  const readme = await readText('README.md');
+  const pluginJsonText = await readText('plugins/oh-my-codex-slim/.codex-plugin/plugin.json');
+  const rootMarketplaceText = await readText('marketplace.json');
+  const codexMarketplaceText = await readText('.agents/plugins/marketplace.json');
+  requireText(readme, 'five OMO-style lanes plus a strict Codex ultrawork reviewer mapping', 'README.md');
+  requireText(readme, 'Runtime multi-agent behavior depends on the Codex host exposing native agent tools', 'README.md');
+  requireText(readme, 'collab_agent_spawn_begin', 'README.md');
+  requireText(readme, 'A final assistant message that says an agent was spawned is not enough.', 'README.md');
+  requireText(pluginJsonText, 'five OMO-style lanes plus a strict Codex ultrawork reviewer mapping', 'plugins/oh-my-codex-slim/.codex-plugin/plugin.json');
+  requireText(rootMarketplaceText, 'five OMO-style lanes', 'marketplace.json');
+  requireText(rootMarketplaceText, 'strict reviewer mapping', 'marketplace.json');
+  requireText(codexMarketplaceText, 'five OMO-style lanes', '.agents/plugins/marketplace.json');
+  requireText(codexMarketplaceText, 'strict reviewer mapping', '.agents/plugins/marketplace.json');
 }
 
 function runHook(input, env = {}) {
@@ -133,23 +249,86 @@ async function snapshotFiles(root) {
   return [...entries.entries()].sort(([left], [right]) => left.localeCompare(right));
 }
 
+async function topLevelTomls(dir) {
+  if (!(await pathExists(dir))) {
+    return [];
+  }
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.toml'))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+async function backupDirs(codexHome) {
+  const root = path.join(codexHome, 'omc-slim-backups');
+  if (!(await pathExists(root))) {
+    return [];
+  }
+  const entries = await fs.readdir(root, { withFileTypes: true });
+  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+}
+
 async function validateInstaller() {
   const tempCodexHome = await fs.mkdtemp(path.join(os.tmpdir(), 'omc-slim-validate-'));
+  const agentsDir = path.join(tempCodexHome, 'agents');
+  const configPath = path.join(tempCodexHome, 'config.toml');
+  const legacyConfig = [
+    'profile = "keep"',
+    '',
+    '[tools]',
+    'mode = "preserve"',
+    '',
+    '[agents.legacy]',
+    'config_file = "./agents/legacy.toml"',
+    'note = "remove this table"',
+    '',
+    '[workspace]',
+    'root = "unchanged"',
+    ''
+  ].join('\n');
+  const legacyAgent = 'name = "legacy"\ndescription = "legacy agent"\n';
 
   try {
+    await fs.mkdir(agentsDir, { recursive: true });
+    await fs.writeFile(configPath, legacyConfig, 'utf8');
+    await fs.writeFile(path.join(agentsDir, 'legacy.toml'), legacyAgent, 'utf8');
+    await fs.writeFile(path.join(agentsDir, 'notes.txt'), 'keep me\n', 'utf8');
+
+    const dryRunBefore = JSON.stringify(await snapshotFiles(tempCodexHome));
     runNode(['scripts/install.mjs', '--dry-run', '--codex-home', tempCodexHome]);
-    assert(!(await pathExists(path.join(tempCodexHome, 'agents'))), 'Dry run must not create agents directory.');
-    assert(!(await pathExists(path.join(tempCodexHome, 'config.toml'))), 'Dry run must not create config.toml.');
+    const dryRunAfter = JSON.stringify(await snapshotFiles(tempCodexHome));
+    assert(dryRunAfter === dryRunBefore, 'Dry run must not write or remove files.');
 
     runNode(['scripts/install.mjs', '--codex-home', tempCodexHome]);
 
+    const backupsAfterInstall = await backupDirs(tempCodexHome);
+    assert(backupsAfterInstall.length === 1, 'First replacement must create exactly one backup.');
+    const backupPath = path.join(tempCodexHome, 'omc-slim-backups', backupsAfterInstall[0]);
+    assert(await pathExists(path.join(backupPath, 'config.toml')), 'Backup must include prior config.toml.');
+    assert(await pathExists(path.join(backupPath, 'agents', 'legacy.toml')), 'Backup must include prior agents directory.');
+
+    const expectedTomls = roles.map((role) => `${role}.toml`).sort();
+    assert(
+      JSON.stringify(await topLevelTomls(agentsDir)) === JSON.stringify(expectedTomls),
+      'Install must leave exactly the six OMC top-level agent TOMLs.'
+    );
+    assert(await pathExists(path.join(agentsDir, 'notes.txt')), 'Non-TOML files under agents/ must be preserved.');
+    assert(!(await pathExists(path.join(agentsDir, 'legacy.toml'))), 'Legacy top-level TOML must be removed.');
+
     for (const role of roles) {
       const source = await readText(`plugins/oh-my-codex-slim/agents/${role}.toml`);
-      const installed = await fs.readFile(path.join(tempCodexHome, 'agents', `${role}.toml`), 'utf8');
+      const installed = await fs.readFile(path.join(agentsDir, `${role}.toml`), 'utf8');
       assert(installed === source, `Installed ${role}.toml must match bundled source.`);
     }
 
-    const config = await fs.readFile(path.join(tempCodexHome, 'config.toml'), 'utf8');
+    const config = await fs.readFile(configPath, 'utf8');
+    assert(config.includes('profile = "keep"'), 'Unrelated root config must be preserved.');
+    assert(config.includes('[tools]'), 'Unrelated [tools] table must be preserved.');
+    assert(config.includes('[workspace]'), 'Unrelated [workspace] table must be preserved.');
+    assert(!config.includes('[agents.legacy]'), 'Legacy agent table must be removed from config.');
+    const agentTables = [...config.matchAll(/^\[agents\.([^\]]+)]/gm)].map((match) => match[1]).sort();
+    assert(JSON.stringify(agentTables) === JSON.stringify([...roles].sort()), 'Config must contain exactly OMC agent tables.');
     for (const role of roles) {
       assert(config.includes(`[agents.${role}]`), `config.toml missing [agents.${role}].`);
       assert(
@@ -162,8 +341,107 @@ async function validateInstaller() {
     runNode(['scripts/install.mjs', '--codex-home', tempCodexHome]);
     const after = JSON.stringify(await snapshotFiles(tempCodexHome));
     assert(after === before, 'Second installer run must be idempotent.');
+    assert((await backupDirs(tempCodexHome)).length === 1, 'Second installer run must not create a new backup.');
+
+    const missingBackupBefore = JSON.stringify(await snapshotFiles(tempCodexHome));
+    runNodeExpectFailure([
+      'scripts/install.mjs',
+      'rollback',
+      '--codex-home',
+      tempCodexHome,
+      '--backup',
+      path.join(tempCodexHome, 'omc-slim-backups', 'not-a-backup')
+    ]);
+    const missingBackupAfter = JSON.stringify(await snapshotFiles(tempCodexHome));
+    assert(missingBackupAfter === missingBackupBefore, 'Missing rollback backup must not modify files.');
+
+    const invalidBackupDir = path.join(tempCodexHome, 'omc-slim-backups', 'invalid-manifest');
+    await fs.mkdir(invalidBackupDir, { recursive: true });
+    await fs.writeFile(path.join(invalidBackupDir, 'manifest.json'), '{}\n', 'utf8');
+    const invalidBackupBefore = JSON.stringify(await snapshotFiles(tempCodexHome));
+    runNodeExpectFailure([
+      'scripts/install.mjs',
+      'rollback',
+      '--codex-home',
+      tempCodexHome,
+      '--backup',
+      invalidBackupDir
+    ]);
+    const invalidBackupAfter = JSON.stringify(await snapshotFiles(tempCodexHome));
+    assert(invalidBackupAfter === invalidBackupBefore, 'Invalid rollback backup must not modify files.');
+
+    runNode(['scripts/install.mjs', 'rollback', '--codex-home', tempCodexHome]);
+    assert((await fs.readFile(configPath, 'utf8')) === legacyConfig, 'Rollback must restore prior config.toml.');
+    assert((await fs.readFile(path.join(agentsDir, 'legacy.toml'), 'utf8')) === legacyAgent, 'Rollback must restore legacy agent.');
+    assert((await fs.readFile(path.join(agentsDir, 'notes.txt'), 'utf8')) === 'keep me\n', 'Rollback must restore prior non-TOML file.');
+    assert(
+      JSON.stringify(await topLevelTomls(agentsDir)) === JSON.stringify(['legacy.toml']),
+      'Rollback must restore prior top-level TOML set.'
+    );
   } finally {
     await fs.rm(tempCodexHome, { recursive: true, force: true });
+  }
+}
+
+async function validateEmptyInstallRollback() {
+  const tempCodexHome = await fs.mkdtemp(path.join(os.tmpdir(), 'omc-slim-empty-'));
+  const agentsDir = path.join(tempCodexHome, 'agents');
+  const configPath = path.join(tempCodexHome, 'config.toml');
+
+  try {
+    runNode(['scripts/install.mjs', 'setup', '--codex-home', tempCodexHome]);
+    assert((await backupDirs(tempCodexHome)).length === 1, 'Empty home setup must create one backup manifest.');
+    assert(await pathExists(configPath), 'Empty home setup must create config.toml.');
+    assert(
+      JSON.stringify(await topLevelTomls(agentsDir)) === JSON.stringify(roles.map((role) => `${role}.toml`).sort()),
+      'Setup alias must install exactly the six OMC role TOMLs.'
+    );
+
+    runNode(['scripts/install.mjs', 'rollback', '--codex-home', tempCodexHome]);
+    assert(!(await pathExists(configPath)), 'Rollback after empty setup must remove created config.toml.');
+    assert(JSON.stringify(await topLevelTomls(agentsDir)) === JSON.stringify([]), 'Rollback after empty setup must remove OMC role TOMLs.');
+  } finally {
+    await fs.rm(tempCodexHome, { recursive: true, force: true });
+  }
+}
+
+async function validateSymlinkRejection() {
+  if (process.platform === 'win32') {
+    return;
+  }
+
+  const configTemp = await fs.mkdtemp(path.join(os.tmpdir(), 'omc-slim-symlink-config-'));
+  try {
+    const codexHome = path.join(configTemp, 'home');
+    const configTarget = path.join(configTemp, 'outside-config.toml');
+    await fs.mkdir(codexHome, { recursive: true });
+    await fs.writeFile(configTarget, 'do not touch\n', 'utf8');
+    await fs.symlink(configTarget, path.join(codexHome, 'config.toml'));
+    runNodeExpectFailure(['scripts/install.mjs', '--codex-home', codexHome]);
+    assert((await fs.readFile(configTarget, 'utf8')) === 'do not touch\n', 'Config symlink target must not be modified.');
+    assert(!(await pathExists(path.join(codexHome, 'omc-slim-backups'))), 'Config symlink rejection must not create backups.');
+    assert(!(await pathExists(path.join(codexHome, 'agents'))), 'Config symlink rejection must not create agents/.');
+  } finally {
+    await fs.rm(configTemp, { recursive: true, force: true });
+  }
+
+  const agentsTemp = await fs.mkdtemp(path.join(os.tmpdir(), 'omc-slim-symlink-agents-'));
+  try {
+    const codexHome = path.join(agentsTemp, 'home');
+    const outsideAgents = path.join(agentsTemp, 'outside-agents');
+    await fs.mkdir(codexHome, { recursive: true });
+    await fs.mkdir(outsideAgents, { recursive: true });
+    await fs.writeFile(path.join(outsideAgents, 'legacy.toml'), 'name = "outside"\n', 'utf8');
+    await fs.symlink(outsideAgents, path.join(codexHome, 'agents'), 'dir');
+    runNodeExpectFailure(['scripts/install.mjs', '--codex-home', codexHome]);
+    assert(
+      (await fs.readFile(path.join(outsideAgents, 'legacy.toml'), 'utf8')) === 'name = "outside"\n',
+      'Agents symlink target must not be modified.'
+    );
+    assert(!(await pathExists(path.join(codexHome, 'config.toml'))), 'Agents symlink rejection must not create config.toml.');
+    assert(!(await pathExists(path.join(codexHome, 'omc-slim-backups'))), 'Agents symlink rejection must not create backups.');
+  } finally {
+    await fs.rm(agentsTemp, { recursive: true, force: true });
   }
 }
 
@@ -171,13 +449,41 @@ async function validateAgents() {
   const agentsDir = path.join(repoRoot, 'plugins/oh-my-codex-slim/agents');
   const bannedField = /^(model|model_reasoning_effort|service_tier)\s*=/m;
   const requiredFields = ['name', 'description', 'nickname_candidates', 'developer_instructions'];
+  const expectedTomls = roles.map((role) => `${role}.toml`).sort();
+  const roleMarkers = {
+    explorer: ['<analysis>', '<results>', 'absolute', 'READ-ONLY'],
+    librarian: ['SHA-pinned', 'TYPE A', 'TYPE B', 'Open questions'],
+    oracle: ['Simplicity bias', 'Effort', 'Confidence', 'One clear path'],
+    designer: ['design system', 'Design Handoff', 'AI-slop', 'desktop and mobile'],
+    fixer: [
+      'Manual QA Gate',
+      'Three-attempt',
+      'Forbidden stops',
+      'root cause',
+      'Return a precise blocker requesting Oracle review',
+      'host explicitly exposes Oracle delegation'
+    ],
+    reviewer: ['UNCONDITIONAL APPROVAL', 'REJECTION', 'Review only', 'codex-ultrawork-reviewer']
+  };
+
+  assert(
+    JSON.stringify(await topLevelTomls(agentsDir)) === JSON.stringify(expectedTomls),
+    'Bundled source agent top-level TOMLs must be exactly the six OMC roles.'
+  );
 
   for (const role of roles) {
     const file = path.join(agentsDir, `${role}.toml`);
     const text = await fs.readFile(file, 'utf8');
+    assert(text.length > 1800, `${role}.toml prompt must be substantially non-trivial.`);
     assert(!bannedField.test(text), `${role}.toml must not set model/reasoning/service tier fields.`);
     for (const field of requiredFields) {
       assert(new RegExp(`^${field}\\s*=`, 'm').test(text), `${role}.toml missing ${field}.`);
+    }
+    for (const marker of roleMarkers[role]) {
+      assert(text.includes(marker), `${role}.toml missing role-specific marker: ${marker}`);
+    }
+    if (role === 'fixer') {
+      assert(!text.includes('Ask Oracle or return'), 'fixer.toml must not regress to direct Oracle orchestration wording.');
     }
   }
 }
@@ -237,8 +543,13 @@ async function validateForbiddenRuntimeConfig() {
 async function main() {
   await validateSyntax();
   await validateJson();
+  await validateVersions();
+  await validateOpenAiYaml();
+  await validatePromptSemantics();
   await validateHook();
   await validateInstaller();
+  await validateEmptyInstallRollback();
+  await validateSymlinkRejection();
   await validateAgents();
   await validateForbiddenRuntimeConfig();
   console.log('Validation passed.');

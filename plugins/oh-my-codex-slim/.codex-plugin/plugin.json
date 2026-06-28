@@ -1,7 +1,7 @@
 {
   "name": "oh-my-codex-slim",
-  "version": "0.1.0",
-  "description": "Slim OMC-style orchestration workflow for Codex.",
+  "version": "0.1.1",
+  "description": "OMO-slim orchestration port for Codex: hook, skill, and native subagent setup.",
   "author": "YanzuoLu",
   "homepage": "https://github.com/YanzuoLu/oh-my-codex-slim",
   "repository": {
@@ -13,7 +13,8 @@
     "codex",
     "workflow",
     "orchestration",
-    "agents",
+    "native-subagents",
+    "setup",
     "hooks",
     "skills"
   ],
@@ -21,15 +22,16 @@
   "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "Oh My Codex Slim",
-    "shortDescription": "Compact OMC orchestration guidance for Codex.",
-    "longDescription": "Oh My Codex Slim injects a concise orchestrator directive in Codex Default mode and ships skills plus reusable agent role definitions for a safe, lightweight workflow.",
+    "shortDescription": "OMO-slim orchestration guidance and native subagent setup for Codex.",
+    "longDescription": "Oh My Codex Slim ports the OMO-slim orchestration contract to Codex with prompt-hook guidance, a workflow skill, and setup that replaces native subagent TOMLs with five OMO-style lanes plus a strict Codex ultrawork reviewer mapping. Runtime multi-agent behavior depends on the Codex host exposing native agent tools such as spawn_agent/list_agents/wait_agent and the model actually using them; otherwise the guidance remains usable directly.",
     "developerName": "YanzuoLu",
     "category": "Developer Tools",
     "capabilities": [
       "Hooks",
       "Skills",
-      "Workflow",
-      "Context Injection"
+      "Workflow Guidance",
+      "Context Injection",
+      "Native Subagent Setup"
     ]
   }
 }

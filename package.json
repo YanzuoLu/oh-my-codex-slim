@@ -1,7 +1,7 @@
 {
   "name": "oh-my-codex-slim",
-  "version": "0.1.0",
-  "description": "Slim Codex orchestration workflow plugin and agent role installer.",
+  "version": "0.1.1",
+  "description": "Slim Codex marketplace plugin with five OMO-style lanes plus a strict reviewer mapping.",
   "type": "module",
   "license": "MIT",
   "author": "YanzuoLu",
