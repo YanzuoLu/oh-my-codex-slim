@@ -136,7 +136,7 @@ async function validatePromptSemantics() {
   for (const role of roles) {
     const file = `plugins/oh-my-codex-slim/agents/${role}.toml`;
     const fileText = await readText(file);
-    for (const forbidden of ['task()', 'ast_grep_search', 'ast_grep_replace', 'background_output', 'bg_', 'ses_', '.omo/notepads', 'Background Job Board', 'Boulder', 'CSV agent jobs']) {
+    for (const forbidden of ['task()', 'ast_grep_search', 'ast_grep_replace', 'glob', 'background_output', 'bg_', 'ses_', '.omo/notepads', 'Background Job Board', 'Boulder', 'CSV agent jobs']) {
       assert(!fileText.includes(forbidden), `${file} must not contain OpenCode-only/non-Codex tool term: ${forbidden}`);
     }
   }

@@ -77,7 +77,7 @@ it.
 Before proposing anything, identify what already exists:
 
 - bundled and user-installed skills;
-- custom agents and their `orchestratorPrompt` guidance;
+- custom agents and their `developer_instructions` guidance;
 - custom commands;
 - prompt overrides and append files;
 - active oh-my-codex-slim agent setup, model routing, skills, and MCP permissions;

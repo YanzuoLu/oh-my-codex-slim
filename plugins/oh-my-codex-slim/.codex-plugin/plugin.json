@@ -1,6 +1,6 @@
 {
   "name": "oh-my-codex-slim",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "OMO-slim orchestration port for Codex: orchestrator hook, ported OMO skills, and five specialist agent roles.",
   "author": "YanzuoLu",
   "homepage": "https://github.com/YanzuoLu/oh-my-codex-slim",
