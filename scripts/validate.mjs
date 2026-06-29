@@ -215,6 +215,16 @@ async function validateHook() {
     'Per-turn reminder must map OpenCode "hook-driven completion" to Codex "agent completion".'
   );
 
+  // A spawned subagent's UserPromptSubmit payload carries agent_id/agent_type; the anchor
+  // must NOT be injected there (it would pollute specialist contexts with the orchestrator
+  // scheduler reminder). Only the root session (no agent_id/agent_type) gets the anchor.
+  const upsSub = runHook(
+    'user-prompt-submit',
+    JSON.stringify({ hook_event_name: 'UserPromptSubmit', agent_id: 'ses_test', agent_type: 'explorer', prompt: 'Find X.' })
+  );
+  assert(upsSub.stderr === '', 'UserPromptSubmit (subagent) hook should not write stderr.');
+  assert(upsSub.stdout === '', 'UserPromptSubmit must NOT inject the anchor for a subagent (agent_id/agent_type present).');
+
   // Hook CLI must run from a plugin-cache-like directory without a package.json.
   const pluginCacheLikeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'omc-slim-hook-cache-'));
   try {

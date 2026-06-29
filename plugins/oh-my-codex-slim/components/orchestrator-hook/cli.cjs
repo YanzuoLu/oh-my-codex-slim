@@ -67,8 +67,16 @@ async function main() {
   }
 
   if (eventName === 'UserPromptSubmit') {
-    // Short per-turn reminder, mirroring omo-slim's PHASE_REMINDER.
-    emit('UserPromptSubmit', PHASE_REMINDER);
+    // Inject the per-turn anchor ONLY in the root orchestrator session. Codex also fires
+    // UserPromptSubmit for a spawned subagent's initial task, but that payload carries
+    // agent_id/agent_type (the root session's payload omits both). Skip subagents so the
+    // orchestrator scheduler reminder never pollutes specialist contexts.
+    const isSubagent =
+      payload && (typeof payload.agent_id === 'string' || typeof payload.agent_type === 'string');
+    if (!isSubagent) {
+      // Short per-turn reminder, mirroring omo-slim's PHASE_REMINDER.
+      emit('UserPromptSubmit', PHASE_REMINDER);
+    }
     return;
   }
 }
