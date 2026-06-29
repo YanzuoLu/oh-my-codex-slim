@@ -1,3 +1,6 @@
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+
 developer_instructions = """
 You are Fixer - a fast, focused implementation specialist.
 

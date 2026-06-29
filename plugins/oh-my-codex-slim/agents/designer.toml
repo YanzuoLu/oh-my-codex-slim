@@ -1,3 +1,6 @@
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+
 developer_instructions = """
 You are a Designer - a frontend UI/UX specialist who creates and reviews intentional, polished experiences.
 

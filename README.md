@@ -16,7 +16,7 @@ Oh My Codex Slim is a Codex-oriented OMO-slim orchestration port. The marketplac
 ```sh
 codex plugin marketplace add YanzuoLu/oh-my-codex-slim
 codex plugin add oh-my-codex-slim@oh-my-codex-slim
-bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.2.3 oh-my-codex-slim install
+bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.2.4 oh-my-codex-slim install
 ```
 
 The third step is required because Codex marketplace plugins do not currently auto-register, disable, or replace native `[agents.*]` configuration. `oh-my-codex-slim install` creates a timestamped backup, removes existing top-level agent TOMLs under `$CODEX_HOME/agents/`, writes the five managed role TOMLs, and rewrites the `[agents.*]` tables in `config.toml` to declare those five roles. Codex's compiled-in `default`/`worker` agents are not file- or config-defined, so they remain available; setup only manages the user agent layer.
@@ -66,13 +66,13 @@ bun scripts/install.mjs install --codex-home /path/to/.codex
 Roll back to the latest backup:
 
 ```sh
-bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.2.3 oh-my-codex-slim rollback
+bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.2.4 oh-my-codex-slim rollback
 ```
 
 Roll back to a specific backup:
 
 ```sh
-bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.2.3 oh-my-codex-slim rollback --backup /path/to/.codex/omc-slim-backups/<timestamp>
+bunx --bun --package git+https://github.com/YanzuoLu/oh-my-codex-slim.git#v0.2.4 oh-my-codex-slim rollback --backup /path/to/.codex/omc-slim-backups/<timestamp>
 ```
 
 From a local checkout, `bun scripts/install.mjs rollback` and `node scripts/install.mjs rollback` are equivalent.
@@ -85,6 +85,7 @@ From a local checkout, `bun scripts/install.mjs rollback` and `node scripts/inst
 - Adds a short per-turn role anchor via a `UserPromptSubmit` hook, equivalent to omo-slim's lightweight per-turn reminder.
 - Ships six ported OMO skills (simplify, deepwork, reflect, codemap, clonedeps, worktrees); the orchestration workflow itself lives in the `SessionStart` directive, not a separate workflow skill.
 - Registers five OMO-style specialist lanes as Codex agents during setup (explorer, librarian, oracle, designer, fixer) by managing the user `[agents.*]` config and role TOMLs; Codex's built-in `default`/`worker` agents remain available. Code review/QA is the oracle lane.
+- Sets each role's model and reasoning effort in its role TOML: explorer/librarian on `gpt-5.5` `medium`; oracle, designer, and fixer on `gpt-5.5` `xhigh`.
 - Uses Codex native live-agent tools when the host exposes them; does not assume unavailable tools exist.
 - Keeps Codex system, developer, approval, sandbox, tool, and active mode instructions authoritative.
 
@@ -102,7 +103,7 @@ This is a faithful port of omo-slim's orchestration behavior, constrained by the
 
 - No automatic agent setup from marketplace install alone; the setup command registers the five roles explicitly.
 - No hook trust config, dangerous permissions, sandbox changes, network changes, or uncertain feature flags.
-- No hardcoded per-role model, reasoning effort, or service tier (models are inherited from your Codex config, matching omo-slim's undefined defaults).
+- No hardcoded service tier (inherited from your Codex config). Per-role model and reasoning effort ARE set in the managed role TOMLs (see "What it does"); edit `$CODEX_HOME/agents/<role>.toml` to change them, but note that re-running setup overwrites them.
 - No separate reviewer agent (review is the oracle lane).
 
 ## Modes and opt-outs

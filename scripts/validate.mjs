@@ -496,7 +496,8 @@ async function validateSymlinkRejection() {
 
 async function validateAgents() {
   const agentsDir = path.join(repoRoot, 'plugins/oh-my-codex-slim/agents');
-  const bannedField = /^(model|model_reasoning_effort|service_tier)\s*=/m;
+  const bannedField = /^service_tier\s*=/m;
+  const roleEffort = { explorer: 'medium', librarian: 'medium', oracle: 'xhigh', designer: 'xhigh', fixer: 'xhigh' };
   // Official Codex layout: the role config_file layer holds developer_instructions
   // (description/nickname_candidates belong in `[agents.<name>]` in config.toml).
   const requiredFields = ['developer_instructions'];
@@ -519,7 +520,12 @@ async function validateAgents() {
     const file = path.join(agentsDir, `${role}.toml`);
     const text = await fs.readFile(file, 'utf8');
     assert(text.length > 500, `${role}.toml prompt must be substantially non-trivial.`);
-    assert(!bannedField.test(text), `${role}.toml must not set model/reasoning/service tier fields.`);
+    assert(!bannedField.test(text), `${role}.toml must not hardcode a service tier.`);
+    assert(/^model\s*=\s*"gpt-5\.5"/m.test(text), `${role}.toml must set model = "gpt-5.5".`);
+    assert(
+      new RegExp(`^model_reasoning_effort\\s*=\\s*"${roleEffort[role]}"`, 'm').test(text),
+      `${role}.toml must set model_reasoning_effort = "${roleEffort[role]}".`
+    );
     for (const field of requiredFields) {
       assert(new RegExp(`^${field}\\s*=`, 'm').test(text), `${role}.toml missing ${field}.`);
     }

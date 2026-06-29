@@ -1,6 +1,6 @@
 {
   "name": "oh-my-codex-slim",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Slim Codex marketplace plugin with five OMO-style specialist lanes (explorer, librarian, oracle, designer, fixer).",
   "type": "module",
   "license": "MIT",
